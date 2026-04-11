@@ -1,0 +1,4 @@
+# Development / shared dependencies
+pytest>=7.0
+httpx>=0.24
+ruff>=0.4

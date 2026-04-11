@@ -1,0 +1,82 @@
+sentinel:
+  database_url: "sqlite:///sentinel.db"
+  # database_url: "postgresql://user:pass@localhost:5432/sentinel"
+  host: "0.0.0.0"
+  port: 8400
+  log_level: "INFO"
+  log_file: "/var/log/sentinel/api.log"
+
+auth:
+  # Tokens listed here are seeded into the database on `init-db`.
+  # For production, use `manage.py create-token` instead and leave this empty.
+  tokens: []
+  # tokens:
+  #   - name: "admin"
+  #     token: "sk-admin-xxxxxxxxxxxx"
+  #   - name: "prod-web-01"
+  #     token: "sk-agent-xxxxxxxxxxxx"
+
+# ──────────────────────────────────────────────────
+# Notifications
+# ──────────────────────────────────────────────────
+# Enable ONE email provider: smtp OR sendgrid. If both are enabled,
+# SendGrid takes priority. Leave both disabled to skip email notifications.
+
+notifications:
+
+  # --- SMTP / Gmail ---
+  smtp:
+    enabled: false
+    host: "smtp.gmail.com"
+    port: 587
+    use_tls: true
+    username: ""               # SMTP login (often your email address)
+    password: ""               # SMTP password or app-specific password
+    from_address: ""           # e.g. "sentinel@example.com"
+    from_name: "CXL Sentinel"
+
+  # --- SendGrid ---
+  sendgrid:
+    enabled: false
+    api_key: ""                # SendGrid API key (starts with SG.)
+    from_address: ""           # Verified sender in SendGrid
+    from_name: "CXL Sentinel"
+
+  # --- Branding ---
+  # Customize the look of notification emails.
+  branding:
+    logo_url: ""               # URL to your logo image (max height ~32px)
+    accent_color: "#2563eb"    # Header background color (hex)
+    company_name: ""           # Shown next to logo
+    footer_text: ""            # Extra text in the email footer
+
+  # --- Notification Rules ---
+  # Each rule maps projects/clients to a list of email recipients.
+  # Use "*" to match all projects or all clients.
+  # Multiple rules can overlap -- recipients are de-duplicated.
+  rules: []
+
+  # Example rules:
+  # rules:
+  #   # Notify the ops team on ALL production deploys
+  #   - project: "*"
+  #     client: "*"
+  #     environments: ["production"]
+  #     recipients:
+  #       - "ops@example.com"
+  #       - "lead@example.com"
+  #
+  #   # Notify the client contact on their project deploys
+  #   - project: "my-web-app"
+  #     client: "acme-corp"
+  #     environments: ["production", "staging"]
+  #     recipients:
+  #       - "client-contact@acme-corp.com"
+  #       - "pm@example.com"
+  #
+  #   # Staging-only alerts for the dev team
+  #   - project: "*"
+  #     client: "*"
+  #     environments: ["staging"]
+  #     recipients:
+  #       - "dev-team@example.com"

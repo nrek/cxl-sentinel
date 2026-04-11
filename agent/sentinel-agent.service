@@ -1,0 +1,27 @@
+[Unit]
+Description=CXL Sentinel Deploy Agent
+After=network-online.target
+Wants=network-online.target
+Documentation=https://github.com/craftxlogic/cxl-sentinel
+
+[Service]
+Type=simple
+User=sentinel
+Group=sentinel
+ExecStart=/opt/sentinel/venv/bin/python -m agent.agent --mode service --config /etc/sentinel/agent.yaml
+WorkingDirectory=/opt/sentinel
+Restart=on-failure
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sentinel-agent
+Environment=PYTHONUNBUFFERED=1
+
+ProtectSystem=strict
+ReadWritePaths=/var/lib/sentinel /var/log/sentinel
+ProtectHome=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

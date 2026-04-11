@@ -1,0 +1,25 @@
+sentinel:
+  api_url: "https://sentinel.example.com/api/v1"
+  api_token: "sk-agent-xxxxxxxxxxxx"
+  server_id: "prod-web-01"
+  environment: "production"   # production | staging
+  scan_interval: 300           # seconds between scans (service mode only)
+  state_file: "/var/lib/sentinel/state.json"
+
+projects:
+  - name: "my-web-app"
+    path: "/var/www/my-web-app"
+    client: "acme-corp"
+    branch: "main"             # optional, defaults to current HEAD branch
+
+  # Add more projects as needed:
+  # - name: "my-dashboard"
+  #   path: "/var/www/my-dashboard"
+  #   client: "acme-corp"
+  #   branch: "main"
+
+logging:
+  level: "INFO"                # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  file: "/var/log/sentinel/agent.log"
+  max_bytes: 10485760          # 10 MB
+  backup_count: 5
