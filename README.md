@@ -72,12 +72,16 @@ For production, place the API behind a reverse proxy (Nginx, Caddy, ALB) with TL
 ### 1. Set up the Central API
 
 ```bash
-git clone https://github.com/craftxlogic/cxl-sentinel.git
+git clone https://github.com/nrek/cxl-sentinel.git
 cd cxl-sentinel
 
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r api/requirements.txt
+
+# Copy and edit the config
+cp api/config.yaml.example api/config.yaml
+# Edit api/config.yaml with your token and settings
 
 # Initialize the database and create your first admin token
 python api/manage.py init-db
@@ -86,10 +90,6 @@ python api/manage.py create-token --name "admin" --role admin
 
 # Create an agent token for your first server
 python api/manage.py create-token --name "prod-web-01" --role agent
-
-# Copy and edit the config
-cp api/config.yaml.example api/config.yaml
-# Edit api/config.yaml with your token and settings
 
 # Start the API
 uvicorn api.main:app --host 0.0.0.0 --port 8400
