@@ -79,9 +79,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r api/requirements.txt
 
-# Copy and edit the config
+# Copy and edit the config BEFORE initializing the database
 cp api/config.yaml.example api/config.yaml
-# Edit api/config.yaml with your token and settings
+# Edit api/config.yaml with your database URL and settings
+nano api/config.yaml
 
 # Initialize the database and create your first admin token
 python api/manage.py init-db
@@ -91,23 +92,18 @@ python api/manage.py create-token --name "admin" --role admin
 # Create an agent token for your first server
 python api/manage.py create-token --name "prod-web-01" --role agent
 
-# Start the API
+# Start the API (foreground, for testing)
 uvicorn api.main:app --host 0.0.0.0 --port 8400
 ```
+
+> For production, run the API as a systemd service instead of in the foreground. See [Running the API in Production](#running-the-api-in-production) below.
 
 ### 2. Install the Agent on a server
 
 ```bash
-# Option A: git clone
-git clone https://github.com/craftxlogic/cxl-sentinel.git /tmp/cxl-sentinel
+git clone https://github.com/nrek/cxl-sentinel.git /tmp/cxl-sentinel
 cd /tmp/cxl-sentinel
 sudo bash agent/install.sh
-
-# Option B: wget tarball
-wget https://sentinel.craftxlogic.com/releases/latest/sentinel-agent.tar.gz
-tar xzf sentinel-agent.tar.gz
-cd sentinel-agent
-sudo bash install.sh
 ```
 
 After installation:
@@ -307,6 +303,64 @@ sudo bash /opt/sentinel/agent/uninstall.sh
 ```
 
 This stops the service, removes the systemd unit, deletes `/opt/sentinel`, `/etc/sentinel`, `/var/lib/sentinel`, and the `sentinel` system user. Log files in `/var/log/sentinel/` are preserved for review.
+
+---
+
+## Running the API in Production
+
+For production, run the central API as a systemd service rather than in the foreground.
+
+Create `/etc/systemd/system/sentinel-api.service`:
+
+```ini
+[Unit]
+Description=CXL Sentinel API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/cxl-sentinel
+ExecStart=/var/www/cxl-sentinel/.venv/bin/uvicorn api.main:app --host 127.0.0.1 --port 8400
+Restart=on-failure
+RestartSec=10
+Environment=SENTINEL_CONFIG=/var/www/cxl-sentinel/api/config.yaml
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then enable and start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now sentinel-api
+sudo systemctl status sentinel-api
+sudo journalctl -u sentinel-api -f
+```
+
+Bind to `127.0.0.1` and place a reverse proxy (Nginx, Caddy) in front for TLS. A minimal Nginx config:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name sentinel.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/sentinel.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/sentinel.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://127.0.0.1:8400;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
 
 ---
 
