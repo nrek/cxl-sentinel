@@ -40,6 +40,8 @@ async def lifespan(app: FastAPI):
     try:
         config = load_api_config(config_path)
     except (FileNotFoundError, ValueError) as e:
+        # stderr so systemd/journal always shows the reason (logging may not be configured yet)
+        print(f"sentinel-api: failed to load config {config_path!r}: {e}", file=sys.stderr, flush=True)
         logger.error("Failed to load config: %s", e)
         sys.exit(1)
 

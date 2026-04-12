@@ -120,12 +120,29 @@ sudo systemctl status sentinel-agent
 sudo journalctl -u sentinel-agent -f
 ```
 
-### 3. Verify
+### 3. Verify agent ↔ central connectivity
+
+**On the agent machine** (same host where the agent runs), use the built-in check. It hits the public health endpoint (no auth), then sends an authenticated heartbeat using your `agent.yaml`:
 
 ```bash
-# Check the API received the heartbeat
-curl -H "Authorization: Bearer <admin-token>" https://your-api-host:8400/api/v1/servers
+# Installed agent (/opt/sentinel)
+cd /opt/sentinel
+sudo -u sentinel ./venv/bin/python -m agent.verify_connection --config /etc/sentinel/agent.yaml
+
+# Or from a git checkout (repo root on PATH)
+python -m agent.verify_connection --config /path/to/agent.yaml
 ```
+
+You should see `OK` for both steps. If step 1 fails, fix DNS, TLS, firewall, or the reverse proxy to central. If step 2 fails with `401`, the token is wrong or revoked — create a new agent token on central and update `api_token` in `agent.yaml`.
+
+**On the central server** (or any machine that can reach the API with an admin token), confirm the heartbeat was stored:
+
+```bash
+curl -sS -H "Authorization: Bearer <admin-token>" \
+  "https://sentinel.example.com/api/v1/servers" | python3 -m json.tool
+```
+
+Look for your `server_id` and a recent `last_seen` / `is_alive`.
 
 ---
 
@@ -403,6 +420,7 @@ cxl-sentinel/
 ├── .gitignore
 ├── agent/
 │   ├── agent.py                # entry point: --mode service|oneshot
+│   ├── verify_connection.py    # test health + heartbeat to central
 │   ├── config.py               # YAML config loader + validation
 │   ├── detector.py             # git change detection
 │   ├── collector.py            # commit metadata extraction

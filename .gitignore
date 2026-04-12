@@ -26,6 +26,7 @@ Thumbs.db
 *.yaml
 !agent/agent.yaml.example
 !api/config.yaml.example
+!api/example.config.yaml
 *.db
 *.sqlite3
 state.json

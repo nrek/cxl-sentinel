@@ -1,0 +1,44 @@
+# Full example — copy to api/config.yaml and edit. Do not commit real secrets.
+#
+# YAML rule: keys under a list item (- project: ...) must be indented past the
+# "-", aligned with "project:", or the parser fails (often at "client:").
+
+sentinel:
+  database_url: "sqlite:///sentinel.db"
+  host: "0.0.0.0"
+  port: 8400
+  log_level: "INFO"
+  log_file: "/var/log/sentinel/api.log"
+
+auth:
+  tokens: []
+
+notifications:
+  smtp:
+    enabled: true
+    host: "smtp.gmail.com"
+    port: 587
+    use_tls: true
+    username: "your-email@example.com"
+    password: "your-app-password"
+    from_address: "notifications@example.com"
+    from_name: "Craft and Logic"
+
+  sendgrid:
+    enabled: false
+    api_key: ""
+    from_address: ""
+    from_name: "CXL Sentinel"
+
+  branding:
+    logo_url: ""
+    accent_color: "#2563eb"
+    company_name: ""
+    footer_text: ""
+
+  rules:
+    - project: "*"
+      client: "*"
+      environments: ["production", "staging"]
+      recipients:
+        - "ops@example.com"
