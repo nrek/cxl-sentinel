@@ -5,6 +5,7 @@ import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, status
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from api.auth import require_role
@@ -48,7 +49,12 @@ async def receive_heartbeat(
         )
         session.add(hb)
 
-    session.commit()
+    try:
+        session.commit()
+    except SQLAlchemyError:
+        session.rollback()
+        logger.exception("Heartbeat DB commit failed for server_id=%s", payload.server_id)
+        raise
 
     logger.debug("Heartbeat from %s (v%s)", payload.server_id, payload.agent_version)
     return HeartbeatResponse(status="ok", server_time=now)

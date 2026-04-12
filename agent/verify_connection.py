@@ -1,8 +1,12 @@
 """Verify the agent can reach the central API (health + authenticated heartbeat).
 
-Run from the repo root or /opt/sentinel with the same config the agent uses:
+Run either:
 
-    python -m agent.verify_connection --config /etc/sentinel/agent.yaml
+    cd /opt/sentinel && ./venv/bin/python -m agent.verify_connection --config /etc/sentinel/agent.yaml
+
+Or (works without cd; path bootstrap below):
+
+    sudo -u sentinel /opt/sentinel/venv/bin/python /opt/sentinel/agent/verify_connection.py --config /etc/sentinel/agent.yaml
 
 Exit code 0 if both checks pass, 1 otherwise.
 """
@@ -12,7 +16,13 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 from typing import Any
+
+# Allow `python /opt/sentinel/agent/verify_connection.py` — package root must be on sys.path
+_repo_root = str(Path(__file__).resolve().parent.parent)
+if _repo_root not in sys.path:
+    sys.path.insert(0, _repo_root)
 
 import requests
 

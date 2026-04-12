@@ -125,13 +125,23 @@ sudo journalctl -u sentinel-agent -f
 **On the agent machine** (same host where the agent runs), use the built-in check. It hits the public health endpoint (no auth), then sends an authenticated heartbeat using your `agent.yaml`:
 
 ```bash
-# Installed agent (/opt/sentinel)
+# Installed agent (/opt/sentinel) — run from repo root so `agent` is importable
 cd /opt/sentinel
 sudo -u sentinel ./venv/bin/python -m agent.verify_connection --config /etc/sentinel/agent.yaml
 
-# Or from a git checkout (repo root on PATH)
+# Same check, full path to script (no `cd`; works after you deploy verify_connection.py)
+sudo -u sentinel /opt/sentinel/venv/bin/python /opt/sentinel/agent/verify_connection.py \
+  --config /etc/sentinel/agent.yaml
+
+# From a git checkout (repo root)
 python -m agent.verify_connection --config /path/to/agent.yaml
 ```
+
+If you see `No module named agent.verify_connection`, `/opt/sentinel/agent/` is missing that file (install was from an older tree). **Pull latest** into a git checkout (not `/opt/sentinel` — that tree is not a clone), then run `sudo bash agent/install.sh` from the **repo root**, or copy `agent/verify_connection.py` into `/opt/sentinel/agent/`.
+
+**`/opt/sentinel` is not a git repository** — deploy updates from a clone elsewhere (`git pull` → `sudo bash agent/install.sh`). Re-running `install.sh` from `/opt/sentinel` is supported (in-place upgrade); older scripts incorrectly deleted the source before copying; use the latest `install.sh` if you see `cp: cannot stat` after `rm -rf`.
+
+If `/opt/sentinel/agent` was removed accidentally, restore from a fresh clone on the server: `git clone … /tmp/cxl-sentinel && cd /tmp/cxl-sentinel && sudo bash agent/install.sh`.
 
 You should see `OK` for both steps. If step 1 fails, fix DNS, TLS, firewall, or the reverse proxy to central. If step 2 fails with `401`, the token is wrong or revoked — create a new agent token on central and update `api_token` in `agent.yaml`.
 
@@ -359,6 +369,30 @@ sudo systemctl status sentinel-api
 sudo journalctl -u sentinel-api -f
 ```
 
+#### Heartbeat returns 500 but `/health` is OK
+
+`/health` does not touch the database; **`POST /heartbeat` writes SQLite**. A 500 almost always means the API process cannot write the DB file or the file’s schema is older than the code.
+
+1. **Inspect the real error** (on the central server):
+
+   ```bash
+   sudo journalctl -u sentinel-api -n 80 --no-pager
+   ```
+
+   Look for `OperationalError`, `readonly database`, or `no such column`.
+
+2. **Fix permissions** — the user running Uvicorn (often `www-data`) must own or be able to write the DB and WAL files next to it:
+
+   ```bash
+   sudo chown -R www-data:www-data /var/www/cxl-sentinel/sentinel.db /var/www/cxl-sentinel/sentinel.db-wal /var/www/cxl-sentinel/sentinel.db-shm 2>/dev/null
+   # or chown the whole project dir if the DB lives there
+   sudo systemctl restart sentinel-api
+   ```
+
+   If `database_url` uses an absolute path (e.g. `sqlite:////var/lib/sentinel/sentinel.db`), ensure that path exists and is writable by the service user.
+
+3. **Schema drift** — after upgrading code, restart `sentinel-api` once so startup can run SQLite column fixes (`commit_count` / `contributors` on `deploy_events`). If problems persist, paste the journal traceback.
+
 Bind to `127.0.0.1` and place a reverse proxy (Nginx, Caddy) in front for TLS. A minimal Nginx config:
 
 ```nginx
@@ -379,12 +413,30 @@ server {
 }
 ```
 
+### After `git pull` on a server
+
+Python is loaded once at startup. **Restart** the service that owns the code you updated, or changes will not apply.
+
+| What you changed | Action |
+|------------------|--------|
+| **Central API** code or `api/requirements.txt` under e.g. `/var/www/cxl-sentinel` | `cd` there → `git pull` → `pip install -r api/requirements.txt` if deps changed → `sudo systemctl restart sentinel-api` |
+| **Agent** code or `agent/requirements.txt` under e.g. `/opt/sentinel` | `git pull` (or re-copy from your checkout) → `pip install -r agent/requirements.txt` if deps changed → `sudo systemctl restart sentinel-agent` |
+| **`api/config.yaml`** or **`/etc/sentinel/agent.yaml`** only | Restart the matching service so the process reloads config (`sentinel-api` / `sentinel-agent`). |
+
+Quick checks:
+
+```bash
+sudo systemctl status sentinel-api sentinel-agent
+sudo journalctl -u sentinel-api -n 30 --no-pager
+sudo journalctl -u sentinel-agent -n 30 --no-pager
+```
+
 ---
 
 ## Development
 
 ```bash
-git clone https://github.com/craftxlogic/cxl-sentinel.git
+git clone https://github.com/nrek/cxl-sentinel.git
 cd cxl-sentinel
 python3 -m venv .venv
 source .venv/bin/activate

@@ -83,10 +83,21 @@ log_info "Creating directories"
 mkdir -p "$INSTALL_DIR" "$CONFIG_DIR" "$LOG_DIR" "$STATE_DIR"
 
 # --- Copy agent code ---
+# When install.sh is run from /opt/sentinel (in-place upgrade), AGENT_SRC is
+# $INSTALL_DIR/agent. We must NOT rm that tree before copying — stage first.
+
+STAGING_DIR="$(mktemp -d)"
+cleanup_staging() { rm -rf "$STAGING_DIR"; }
+trap cleanup_staging EXIT
 
 log_info "Copying agent code to $INSTALL_DIR/"
+cp -a "$AGENT_SRC/." "$STAGING_DIR/"
 rm -rf "$INSTALL_DIR/agent"
-cp -r "$AGENT_SRC" "$INSTALL_DIR/agent"
+mkdir -p "$INSTALL_DIR/agent"
+cp -a "$STAGING_DIR/." "$INSTALL_DIR/agent/"
+
+trap - EXIT
+cleanup_staging
 
 if [[ -f "$REPO_ROOT/VERSION" ]]; then
     cp "$REPO_ROOT/VERSION" "$INSTALL_DIR/VERSION"

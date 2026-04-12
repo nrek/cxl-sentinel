@@ -13,6 +13,7 @@ from api.config import load_api_config
 from api.database import init_engine, get_engine
 from api.models import Base
 from api.routers import events, heartbeat, servers, health
+from api.sqlite_migrations import apply_sqlite_migrations
 
 logger = logging.getLogger("sentinel.api")
 
@@ -50,6 +51,7 @@ async def lifespan(app: FastAPI):
 
     engine = get_engine()
     Base.metadata.create_all(bind=engine)
+    apply_sqlite_migrations(engine)
 
     app.state.config = config
     logger.info("CXL Sentinel API v%s started", _get_version())
