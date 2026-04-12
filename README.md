@@ -295,6 +295,22 @@ notifications:
 
 The HTML template is in `api/notifications/templates/deploy_notification.html` and can be edited directly for deeper customization.
 
+### Test email (dry-run)
+
+From the repo root with `SENTINEL_CONFIG` pointing at your `config.yaml` (or `api/config.yaml` in cwd):
+
+```bash
+python api/manage.py test-email --dry-run
+```
+
+Prints the subject and full HTML using sample deploy data—no SMTP/SendGrid call. To send one real test message with the same template and your enabled provider:
+
+```bash
+python api/manage.py test-email --to you@example.com
+```
+
+Optional flags: `--project`, `--client`, `--server`, `--environment` (`production` or `staging`), `--message`, `--author`, `--files`, `--commits`, `--contributor` (comma-separated), `--branch`, `--detected-at` (ISO 8601).
+
 ---
 
 ## Running Modes
