@@ -4,6 +4,24 @@ Lightweight deployment tracking for manually deployed web applications.
 
 CXL Sentinel monitors git-based project directories on your servers, detects when deployments happen, and records the events to a central API. It is designed for teams that deploy manually or semi-manually and want visibility into what was deployed, when, and by whom -- without adopting a full CI/CD pipeline.
 
+## Table of contents
+
+- [Features](#features)
+- [Architecture](#architecture)
+- [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [Agent Configuration](#agent-configuration)
+  - [Troubleshooting: dubious Git ownership](#troubleshooting-dubious-git-ownership)
+- [API Endpoints](#api-endpoints)
+- [Email Notifications](#email-notifications)
+- [Running Modes](#running-modes)
+- [Uninstalling the Agent](#uninstalling-the-agent)
+- [Running the API in Production](#running-the-api-in-production)
+- [Development](#development)
+- [Project Structure](#project-structure)
+- [Security](#security)
+- [License](#license)
+
 ## Features
 
 - **Git-based detection**: Watches `HEAD` for changes in configured project directories
@@ -204,6 +222,44 @@ logging:
 | `logging.file` | string | `/var/log/sentinel/agent.log` | Log file path |
 | `logging.max_bytes` | int | `10485760` | Max log file size before rotation |
 | `logging.backup_count` | int | `5` | Number of rotated log files to keep |
+
+### Troubleshooting: dubious Git ownership
+
+On production servers the git checkout is often owned by **`www-data`** or another deploy user, while the Sentinel agent runs as the unprivileged **`sentinel`** user. Git 2.35+ treats that as **dubious ownership** and refuses to run in the repo. The agent logs a warning and skips the project, for example:
+
+```text
+Skipping 'PHALANX': git rev-parse HEAD failed: fatal: detected dubious ownership in repository at '/var/www/...'
+```
+
+**Do not rely on** `git config --global --add safe.directory …` **run only as root or your personal user** — `global` means “this user’s `~/.gitconfig`”. The systemd service does not read that file. The **`sentinel`** user often has **no home directory**, so `sudo -u sentinel git config --global …` can fail with:
+
+```text
+error: could not lock config file /home/sentinel/.gitconfig: No such file or directory
+```
+
+**Recommended fix (one line, applies to all users):**
+
+```bash
+sudo git config --system --add safe.directory /var/www/your-app
+```
+
+Config is stored in `/etc/gitconfig`. Repeat `--add` for each repository path you monitor, or use a single entry if you standardize on one parent path (see `git help config` for `safe.directory` patterns on your Git version).
+
+**Alternative:** create a home for the service user, then use `--global`:
+
+```bash
+sudo mkdir -p /home/sentinel
+sudo chown sentinel:sentinel /home/sentinel
+sudo chmod 750 /home/sentinel
+sudo -u sentinel git config --global --add safe.directory /var/www/your-app
+```
+
+**Verify** as the same user the agent uses:
+
+```bash
+sudo systemctl show sentinel-agent -p User --value
+sudo -u sentinel git -C /var/www/your-app rev-parse HEAD
+```
 
 ---
 
