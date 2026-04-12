@@ -36,22 +36,7 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
-REQUIRED_CMDS=("python3" "git" "systemctl")
-for cmd in "${REQUIRED_CMDS[@]}"; do
-    if ! command -v "$cmd" &>/dev/null; then
-        log_error "Required command not found: $cmd"
-        exit 1
-    fi
-done
-
-PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
-PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
-if [[ "$PYTHON_MAJOR" -lt 3 ]] || [[ "$PYTHON_MAJOR" -eq 3 && "$PYTHON_MINOR" -lt 10 ]]; then
-    log_error "Python 3.10+ is required, found $PYTHON_VERSION"
-    exit 1
-fi
-log_info "Python $PYTHON_VERSION detected"
+MISSING=()
 
 # Determine source directory (where this script lives)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -64,9 +49,56 @@ elif [[ -f "$SCRIPT_DIR/agent/agent.py" ]]; then
     AGENT_SRC="$SCRIPT_DIR/agent"
     REPO_ROOT="$SCRIPT_DIR"
 else
-    log_error "Cannot find agent source files. Run from the repo root or agent/ directory."
+    MISSING+=("Cannot find agent sources (expected agent.py next to this script or under agent/). Clone the repo and run: sudo bash agent/install.sh from the repository root")
+fi
+
+REQUIRED_CMDS=("python3" "git" "systemctl")
+for cmd in "${REQUIRED_CMDS[@]}"; do
+    if ! command -v "$cmd" &>/dev/null; then
+        MISSING+=("Command '$cmd' not found on PATH")
+    fi
+done
+
+if command -v python3 &>/dev/null; then
+    PYTHON_VERSION=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>/dev/null) || PYTHON_VERSION=""
+    if [[ -z "$PYTHON_VERSION" ]]; then
+        MISSING+=("Could not read Python version (is python3 working?)")
+    else
+        PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
+        PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
+        if [[ "$PYTHON_MAJOR" -lt 3 ]] || [[ "$PYTHON_MAJOR" -eq 3 && "$PYTHON_MINOR" -lt 10 ]]; then
+            MISSING+=("Python 3.10+ is required; found Python $PYTHON_VERSION")
+        fi
+    fi
+
+    if ! python3 -c "import venv" 2>/dev/null; then
+        MISSING+=("Python 'venv' module is missing — on Debian/Ubuntu install: apt-get install -y python3-venv")
+    else
+        TESTV=$(mktemp -d)
+        if python3 -m venv "$TESTV" 2>/dev/null; then
+            if ! [[ -x "$TESTV/bin/python" ]] || ! "$TESTV/bin/python" -m pip --version &>/dev/null; then
+                MISSING+=("Virtualenv was created but pip is not usable inside it — on Debian/Ubuntu try: apt-get install -y python3-venv python3-pip")
+            fi
+        else
+            MISSING+=("python3 -m venv failed — install the venv stack (e.g. apt-get install -y python3-venv)")
+        fi
+        rm -rf "$TESTV"
+    fi
+fi
+
+if (( ${#MISSING[@]} > 0 )); then
+    log_error "Missing prerequisites — install the following and re-run this script:"
+    echo ""
+    i=1
+    for msg in "${MISSING[@]}"; do
+        echo "  $i. $msg"
+        i=$((i + 1))
+    done
+    echo ""
     exit 1
 fi
+
+log_info "Prerequisite checks passed (Python ${PYTHON_VERSION})"
 
 # --- Create system user ---
 
@@ -105,15 +137,20 @@ fi
 
 # --- Create virtual environment ---
 
-if [[ ! -d "$INSTALL_DIR/venv" ]]; then
+VENV_PY="$INSTALL_DIR/venv/bin/python"
+if [[ -x "$VENV_PY" ]]; then
+    log_info "Virtual environment already exists, upgrading pip"
+else
+    if [[ -d "$INSTALL_DIR/venv" ]]; then
+        log_warn "Existing venv at $INSTALL_DIR/venv is incomplete or broken; recreating"
+        rm -rf "$INSTALL_DIR/venv"
+    fi
     log_info "Creating Python virtual environment"
     python3 -m venv "$INSTALL_DIR/venv"
-else
-    log_info "Virtual environment already exists, upgrading pip"
 fi
 
-"$INSTALL_DIR/venv/bin/pip" install --quiet --upgrade pip
-"$INSTALL_DIR/venv/bin/pip" install --quiet -r "$INSTALL_DIR/agent/requirements.txt"
+"$VENV_PY" -m pip install --quiet --upgrade pip
+"$VENV_PY" -m pip install --quiet -r "$INSTALL_DIR/agent/requirements.txt"
 log_info "Dependencies installed"
 
 # --- Config file ---

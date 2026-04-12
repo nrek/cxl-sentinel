@@ -237,27 +237,40 @@ Skipping 'PHALANX': git rev-parse HEAD failed: fatal: detected dubious ownership
 error: could not lock config file /home/sentinel/.gitconfig: No such file or directory
 ```
 
-**Recommended fix (one line, applies to all users):**
+**Recommended fix (applies to all users, including the `sentinel` systemd service):**
 
 ```bash
 sudo git config --system --add safe.directory /var/www/your-app
 ```
 
-Config is stored in `/etc/gitconfig`. Repeat `--add` for each repository path you monitor, or use a single entry if you standardize on one parent path (see `git help config` for `safe.directory` patterns on your Git version).
-
-**Alternative:** create a home for the service user, then use `--global`:
+Use the **canonical** path: same spelling Git prints in the error (usually **no trailing slash**). If the deploy path is a symlink, prefer the resolved path:
 
 ```bash
-sudo mkdir -p /home/sentinel
-sudo chown sentinel:sentinel /home/sentinel
-sudo chmod 750 /home/sentinel
-sudo -u sentinel git config --global --add safe.directory /var/www/your-app
+sudo git config --system --add safe.directory "$(readlink -f /var/www/your-app)"
 ```
 
-**Verify** as the same user the agent uses:
+Config is stored in `/etc/gitconfig`. Repeat `--add` for each repository, or use a pattern your Git version supports (see `git help config`, `safe.directory`).
+
+**If it still fails after `--system`:** clear duplicates and re-add one canonical entry:
+
+```bash
+sudo git config --system --unset-all safe.directory
+sudo git config --system --add safe.directory "$(readlink -f /var/www/your-app)"
+```
+
+**Last resort** (trust any repository path on the host — weaker security, Git 2.35.2+):
+
+```bash
+sudo git config --system --add safe.directory '*'
+```
+
+**Do not use** `sudo git config --global …` **as root** — that only updates **`/root/.gitconfig`**, not `sentinel`. A **`--global`** file under **`/home/sentinel`** is also **not read** by the bundled agent: `sentinel-agent.service` uses **`ProtectHome=yes`**, so `/home` is invisible to the service process. **`--system`** is the right place for daemon-safe settings.
+
+**Verify** (must succeed before the agent can scan):
 
 ```bash
 sudo systemctl show sentinel-agent -p User --value
+sudo -u sentinel git config --system --get-all safe.directory
 sudo -u sentinel git -C /var/www/your-app rev-parse HEAD
 ```
 
@@ -468,6 +481,22 @@ sudo journalctl -u sentinel-api -f
    If `database_url` uses an absolute path (e.g. `sqlite:////var/lib/sentinel/sentinel.db`), ensure that path exists and is writable by the service user.
 
 3. **Schema drift** — after upgrading code, restart `sentinel-api` once so startup can run SQLite column fixes (`commit_count` / `contributors` on `deploy_events`). If problems persist, paste the journal traceback.
+
+#### `manage.py`: `attempt to write a readonly database`
+
+`init-db`, `create-token`, `revoke-token`, and other `manage.py` commands open the **same** SQLite file as the API. If the database was created or is normally written by **`www-data`** (the systemd service user), running `manage.py` as root or as your SSH user opens the file **read-only** for you, and commits fail with `sqlite3.OperationalError: attempt to write a readonly database`.
+
+**Run CLI commands as the database owner** (usually `www-data`):
+
+```bash
+cd /var/www/cxl-sentinel
+sudo -u www-data env SENTINEL_CONFIG=/var/www/cxl-sentinel/api/config.yaml \
+  .venv/bin/python api/manage.py create-token --name "my-admin" --role admin
+```
+
+Use the same pattern for `init-db`, `list-tokens`, `revoke-token`, and `test-email` when they must write or when the DB is not writable by your interactive user.
+
+**Alternatively**, change ownership of the DB files to a dedicated admin user and run both the API and `manage.py` as that user—only do this if you adjust the systemd `User=` to match, or the API will lose write access.
 
 Bind to `127.0.0.1` and place a reverse proxy (Nginx, Caddy) in front for TLS. A minimal Nginx config:
 
