@@ -288,10 +288,14 @@ Customize the email appearance:
 notifications:
   branding:
     logo_url: "https://example.com/logo.png"
-    accent_color: "#2563eb"
+    accent_color: "#2563eb"       # stats row + “Latest change” callout border (body)
+    header_theme: "light"         # "dark" = light text on header; "light" = dark text
+    header_background: "#cdcdcd"  # top banner strip only; omit to reuse accent_color
     company_name: "Your Company"
     footer_text: "Managed by Your Company"
 ```
+
+Use `header_theme` + `header_background` when the logo is dark on a light strip (or the inverse): the header title, subtitle, and environment pill follow the theme. `accent_color` stays on the summary stats and the left border of the latest-commit block.
 
 The HTML template is in `api/notifications/templates/deploy_notification.html` and can be edited directly for deeper customization.
 

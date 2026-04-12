@@ -36,7 +36,9 @@ class SendGridConfig:
 @dataclass
 class BrandingConfig:
     logo_url: str = ""
-    accent_color: str = "#2563eb"
+    accent_color: str = "#2563eb"  # body stats + callout border; not the header strip
+    header_theme: str = "dark"  # "dark" = light text on header; "light" = dark text on header
+    header_background: str = ""  # header strip color; empty falls back to accent_color
     company_name: str = ""
     footer_text: str = ""
 
@@ -135,9 +137,15 @@ def _parse_notifications(raw: dict) -> NotificationsConfig:
     )
 
     branding_raw = raw.get("branding", {})
+    ht = str(branding_raw.get("header_theme", "dark")).strip().lower()
+    if ht not in ("dark", "light"):
+        ht = "dark"
+
     branding = BrandingConfig(
         logo_url=str(branding_raw.get("logo_url", "")),
         accent_color=str(branding_raw.get("accent_color", "#2563eb")),
+        header_theme=ht,
+        header_background=str(branding_raw.get("header_background", "") or ""),
         company_name=str(branding_raw.get("company_name", "")),
         footer_text=str(branding_raw.get("footer_text", "")),
     )

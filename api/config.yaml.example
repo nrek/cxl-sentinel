@@ -46,7 +46,9 @@ notifications:
   # Customize the look of notification emails.
   branding:
     logo_url: ""               # URL to your logo image (max height ~32px)
-    accent_color: "#2563eb"    # Header background color (hex)
+    accent_color: "#2563eb"    # Body: stat numbers + latest-commit callout border
+    header_theme: "dark"       # "dark" = light text on banner; "light" = dark text on banner
+    header_background: ""      # Banner strip color (#cdcdcd, etc.); empty = same as accent_color
     company_name: ""           # Shown next to logo
     footer_text: ""            # Extra text in the email footer
 

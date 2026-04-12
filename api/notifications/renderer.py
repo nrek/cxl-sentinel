@@ -14,6 +14,32 @@ from api.config import BrandingConfig
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
+def _header_style_vars(branding: BrandingConfig) -> dict[str, str]:
+    """Colors for the top banner only. Body still uses accent_color."""
+    accent = branding.accent_color or "#2563eb"
+    bg = (branding.header_background or "").strip() or accent
+    theme = (branding.header_theme or "dark").strip().lower()
+    if theme not in ("dark", "light"):
+        theme = "dark"
+
+    if theme == "dark":
+        return {
+            "header_background": _esc(bg),
+            "header_title_color": _esc("#ffffff"),
+            "header_subtitle_color": _esc("rgba(255,255,255,0.8)"),
+            "header_badge_background": _esc("rgba(255,255,255,0.2)"),
+            "header_badge_color": _esc("#ffffff"),
+        }
+
+    return {
+        "header_background": _esc(bg),
+        "header_title_color": _esc("#0f172a"),
+        "header_subtitle_color": _esc("#475569"),
+        "header_badge_background": _esc("rgba(15,23,42,0.08)"),
+        "header_badge_color": _esc("#334155"),
+    }
+
+
 def render_deploy_email(
     project: str,
     client: str,
@@ -65,6 +91,7 @@ def render_deploy_email(
         "company_name": _esc(branding.company_name or ""),
         "footer_text": _esc(branding.footer_text or ""),
     }
+    variables.update(_header_style_vars(branding))
 
     html = _process_conditionals(html, variables)
     html = _replace_variables(html, variables)
