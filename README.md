@@ -114,7 +114,7 @@ python api/manage.py create-token --name "admin" --role admin
 # Save the printed token -- it will not be shown again
 
 # Create an agent token for your first server
-python api/manage.py create-token --name "commonspace" --role agent
+python api/manage.py create-token --name "prod-web-01" --role agent
 
 # Start the API (foreground, for testing)
 uvicorn api.main:app --host 0.0.0.0 --port 8400
@@ -184,18 +184,18 @@ The agent reads `/etc/sentinel/agent.yaml`:
 sentinel:
   api_url: "https://sentinel.example.com/api/v1"
   api_token: "sk-agent-xxxxxxxxxxxx"
-  server_id: "commonspace"
+  server_id: "acme-web"
   environment: "production"   # production | staging
   scan_interval: "5m"         # 5m, 10m, 1h, 6h (minimum 1m)
   state_file: "/var/lib/sentinel/state.json"
 
 repos:
   - alias: "front-end"
-    path: "/var/www/commonspace-ui-v3"
+    path: "/var/www/my-frontend"
     branch: "main"
 
   - alias: "backend"
-    path: "/var/www/commonspace-app"
+    path: "/var/www/my-backend"
     branch: "main"
 
 logging:
@@ -289,8 +289,8 @@ Rules map a `server_id` (or `"*"` wildcard) to a list of recipient emails with a
 ```yaml
 notifications:
   rules:
-    - server_id: "commonspace"
-      server_alias: "Commonspace"       # human-readable, used in email headers
+    - server_id: "acme-web"
+      server_alias: "Acme Web"          # human-readable, used in email headers
       environments: ["production", "staging"]
       send_schedule: "6h"               # digest cadence: 10m, 6h, 1d, 7d
       recipients:

@@ -70,9 +70,9 @@ notifications:
   #       - "ops@example.com"
   #       - "lead@example.com"
   #
-  #   # Commonspace: staging + production, digest daily
-  #   - server_id: "commonspace"
-  #     server_alias: "Commonspace"
+  #   # Per-server rule: staging + production, digest daily
+  #   - server_id: "acme-web"
+  #     server_alias: "Acme Web"
   #     environments: ["production", "staging"]
   #     send_schedule: "1d"
   #     recipients:
