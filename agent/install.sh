@@ -178,6 +178,16 @@ chmod 0600 "$CONFIG_DIR/agent.yaml"
 chmod 0700 "$STATE_DIR"
 chmod 0755 "$LOG_DIR"
 
+# --- Git safe.directory (upgrade path) ---
+# When the config already has real repo paths, register them in
+# git config --system so the sentinel user can read repos it doesn't own.
+
+SAFE_DIR_SCRIPT="$INSTALL_DIR/agent/fix-safe-dirs.sh"
+if [[ -f "$CONFIG_DIR/agent.yaml" ]] && [[ -f "$SAFE_DIR_SCRIPT" ]]; then
+    log_info "Registering monitored repo paths as git safe.directory"
+    bash "$SAFE_DIR_SCRIPT" "$CONFIG_DIR/agent.yaml" || log_warn "fix-safe-dirs.sh had warnings (non-fatal)"
+fi
+
 # --- Done ---
 
 echo ""
@@ -185,7 +195,8 @@ log_info "Installation complete!"
 echo ""
 echo "  Next steps:"
 echo "    1. Edit the config:    sudo nano $CONFIG_DIR/agent.yaml"
-echo "    2. Enable the service: sudo systemctl enable --now $SERVICE_NAME"
-echo "    3. Check status:       sudo systemctl status $SERVICE_NAME"
-echo "    4. View logs:          sudo journalctl -u $SERVICE_NAME -f"
+echo "    2. Register repo dirs: sudo bash $SAFE_DIR_SCRIPT"
+echo "    3. Enable the service: sudo systemctl enable --now $SERVICE_NAME"
+echo "    4. Check status:       sudo systemctl status $SERVICE_NAME"
+echo "    5. View logs:          sudo journalctl -u $SERVICE_NAME -f"
 echo ""

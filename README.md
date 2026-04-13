@@ -225,55 +225,51 @@ logging:
 
 **One token, many servers:** A single `api_token` (`sk-...`) can be reused across multiple servers sharing the same `server_id`. Each server reports its `environment` and the repos it watches. Central groups events by `server_id + environment`.
 
-### Troubleshooting: dubious Git ownership
+### Git safe.directory (automated fix)
 
-On production servers the git checkout is often owned by **`www-data`** or another deploy user, while the Sentinel agent runs as the unprivileged **`sentinel`** user. Git 2.35+ treats that as **dubious ownership** and refuses to run in the repo. The agent logs a warning and skips the repo, for example:
+On production servers the git checkout is often owned by **`www-data`** or another deploy user, while the Sentinel agent runs as the unprivileged **`sentinel`** user. Git 2.35+ treats that as **dubious ownership** and refuses to run in the repo. The agent logs a warning and skips the repo:
 
 ```text
 Skipping 'front-end': git rev-parse HEAD failed: fatal: detected dubious ownership in repository at '/var/www/...'
 ```
 
-**Do not rely on** `git config --global --add safe.directory …` **run only as root or your personal user** — `global` means "this user's `~/.gitconfig`". The systemd service does not read that file. The **`sentinel`** user often has **no home directory**, so `sudo -u sentinel git config --global …` can fail with:
+**`install.sh` fixes this automatically** — during install or upgrade, it reads your `agent.yaml`, resolves each `repos[].path` to its canonical path, and registers it in `git config --system safe.directory`. This applies to all users on the host, including the `sentinel` systemd service.
 
-```text
-error: could not lock config file /home/sentinel/.gitconfig: No such file or directory
-```
-
-**Recommended fix (applies to all users, including the `sentinel` systemd service):**
+If you add new repos to your config after installation, run the fix manually:
 
 ```bash
-sudo git config --system --add safe.directory /var/www/your-app
+sudo bash /opt/sentinel/agent/fix-safe-dirs.sh
 ```
 
-Use the **canonical** path: same spelling Git prints in the error (usually **no trailing slash**). If the deploy path is a symlink, prefer the resolved path:
+Or with an explicit config path:
 
 ```bash
-sudo git config --system --add safe.directory "$(readlink -f /var/www/your-app)"
+sudo bash /opt/sentinel/agent/fix-safe-dirs.sh /etc/sentinel/agent.yaml
 ```
-
-Config is stored in `/etc/gitconfig`. Repeat `--add` for each repository, or use a pattern your Git version supports (see `git help config`, `safe.directory`).
-
-**If it still fails after `--system`:** clear duplicates and re-add one canonical entry:
-
-```bash
-sudo git config --system --unset-all safe.directory
-sudo git config --system --add safe.directory "$(readlink -f /var/www/your-app)"
-```
-
-**Last resort** (trust any repository path on the host — weaker security, Git 2.35.2+):
-
-```bash
-sudo git config --system --add safe.directory '*'
-```
-
-**Do not use** `sudo git config --global …` **as root** — that only updates **`/root/.gitconfig`**, not `sentinel`. A **`--global`** file under **`/home/sentinel`** is also **not read** by the bundled agent: `sentinel-agent.service` uses **`ProtectHome=yes`**, so `/home` is invisible to the service process. **`--system`** is the right place for daemon-safe settings.
 
 **Verify** (must succeed before the agent can scan):
 
 ```bash
-sudo systemctl show sentinel-agent -p User --value
-sudo -u sentinel git config --system --get-all safe.directory
+sudo git config --system --get-all safe.directory
 sudo -u sentinel git -C /var/www/your-app rev-parse HEAD
+```
+
+#### Why not `--global`?
+
+**Do not use** `git config --global` for this. `--global` writes to a user's `~/.gitconfig`. The `sentinel` system user has **no home directory**, and `sentinel-agent.service` uses **`ProtectHome=yes`**, making `/home` invisible to the service. The `--system` scope (`/etc/gitconfig`) is the only one the daemon reads.
+
+#### Manual fallback
+
+If the automated script doesn't cover your case:
+
+```bash
+sudo git config --system --add safe.directory "$(readlink -f /var/www/your-app)"
+```
+
+Last resort (trust all paths — weaker security, Git 2.35.2+):
+
+```bash
+sudo git config --system --add safe.directory '*'
 ```
 
 ---
@@ -627,7 +623,8 @@ cxl-sentinel/
 │   ├── queue.py                # offline event queue
 │   ├── state.py                # state file persistence
 │   ├── requirements.txt        # agent runtime deps
-│   ├── install.sh              # server install script
+│   ├── install.sh              # server install script (also runs fix-safe-dirs)
+│   ├── fix-safe-dirs.sh        # register repo paths in git safe.directory
 │   ├── uninstall.sh            # server removal script
 │   ├── sentinel-agent.service  # systemd unit file
 │   ├── agent.yaml.example      # example configuration
