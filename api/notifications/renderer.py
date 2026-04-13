@@ -49,8 +49,7 @@ def _header_style_vars(branding: BrandingConfig) -> dict[str, str]:
 
 
 def render_deploy_email(
-    project: str,
-    client: str,
+    repo_alias: str,
     server_id: str,
     environment: str,
     commit_hash: str,
@@ -75,7 +74,7 @@ def render_deploy_email(
     env_label = environment.capitalize()
     notify_tag = f"{_NOTIFY_PREFIX} " if _commit_requests_immediate_notify(commit_message) else ""
     subject = (
-        f"{notify_tag}[{env_label}] {project} updated — {files_changed} files, "
+        f"{notify_tag}[{env_label}] {repo_alias} updated — {files_changed} files, "
         f"{commit_count} commit{'s' if commit_count != 1 else ''}"
     )
 
@@ -83,8 +82,7 @@ def render_deploy_email(
     contributors_display = ", ".join(contributors) if contributors else commit_author
 
     variables = {
-        "project": _esc(project),
-        "client": _esc(client),
+        "repo_alias": _esc(repo_alias),
         "server_id": _esc(server_id),
         "environment": _esc(environment),
         "commit_hash_short": _esc(commit_hash[:12]),
@@ -98,6 +96,90 @@ def render_deploy_email(
         "contributors_list": _esc(contributors_display),
         "branch": _esc(branch),
         "detected_at": _esc(detected_at),
+        "accent_color": _esc(branding.accent_color or "#2563eb"),
+        "logo_url": _esc(branding.logo_url or ""),
+        "company_name": _esc(branding.company_name or ""),
+        "footer_text": _esc(branding.footer_text or ""),
+    }
+    variables.update(_header_style_vars(branding))
+
+    html = _process_conditionals(html, variables)
+    html = _replace_variables(html, variables)
+
+    return subject, html
+
+
+def render_digest_email(
+    server_alias: str,
+    server_id: str,
+    environment: str,
+    events: list[dict],
+    branding: BrandingConfig,
+) -> tuple[str, str]:
+    """Render a digest summary email for batched deploy events.
+
+    Each event in `events` should be a dict with keys:
+        repo_alias, commit_hash, commit_message, commit_author,
+        files_changed, commit_count, contributors, branch, detected_at,
+        notified_immediately (bool).
+
+    Returns:
+        (subject, html_body) tuple.
+    """
+    template_path = _TEMPLATE_DIR / "digest_notification.html"
+    html = template_path.read_text(encoding="utf-8")
+
+    env_label = environment.capitalize()
+    total_events = len(events)
+    subject = (
+        f"[Digest] [{env_label}] {server_alias} — {total_events} "
+        f"deploy{'s' if total_events != 1 else ''} since last digest"
+    )
+
+    event_rows_html = ""
+    for ev in events:
+        already = ev.get("notified_immediately", False)
+        already_badge = (
+            ' <span style="display:inline-block;padding:1px 6px;font-size:10px;'
+            'background:#fef3c7;color:#92400e;border-radius:3px;margin-left:4px;">'
+            'sent immediately</span>'
+        ) if already else ""
+
+        msg = _esc(ev.get("commit_message", "(no message)") or "(no message)")
+        first_line = msg.split("\n", 1)[0][:120]
+        author = _esc(ev.get("commit_author", "unknown") or "unknown")
+        short_hash = _esc((ev.get("commit_hash", "") or "")[:12])
+        repo = _esc(ev.get("repo_alias", ""))
+        files = ev.get("files_changed", 0)
+        det = _esc(ev.get("detected_at", ""))
+
+        event_rows_html += (
+            '<tr>'
+            f'<td style="padding:12px 16px;border-bottom:1px solid #f0f0f0;">'
+            f'<p style="margin:0 0 4px;font-size:14px;font-weight:600;color:#1a1a2e;">'
+            f'{first_line}{already_badge}</p>'
+            f'<p style="margin:0;font-size:12px;color:#6b7280;">'
+            f'{repo} &middot; {author} &middot; {short_hash} &middot; {files} files &middot; {det}</p>'
+            f'</td>'
+            '</tr>'
+        )
+
+    total_files = sum(ev.get("files_changed", 0) for ev in events)
+    total_commits = sum(ev.get("commit_count", 1) for ev in events)
+    all_contributors: set[str] = set()
+    for ev in events:
+        for c in (ev.get("contributors") or []):
+            all_contributors.add(c)
+
+    variables = {
+        "server_alias": _esc(server_alias),
+        "server_id": _esc(server_id),
+        "environment": _esc(environment),
+        "total_events": str(total_events),
+        "total_files": str(total_files),
+        "total_commits": str(total_commits),
+        "total_contributors": str(len(all_contributors) or 1),
+        "event_rows": event_rows_html,
         "accent_color": _esc(branding.accent_color or "#2563eb"),
         "logo_url": _esc(branding.logo_url or ""),
         "company_name": _esc(branding.company_name or ""),

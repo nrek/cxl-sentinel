@@ -53,32 +53,34 @@ notifications:
     footer_text: ""            # Extra text in the email footer
 
   # --- Notification Rules ---
-  # Each rule maps projects/clients to a list of email recipients.
-  # Use "*" to match all projects or all clients.
-  # Multiple rules can overlap -- recipients are de-duplicated.
+  # Each rule maps a server_id (or "*" wildcard) to recipients with a digest schedule.
+  # `send_schedule` controls how often digest emails are sent (10m, 6h, 1d, 7d).
+  # Digests are anchored at midnight UTC (e.g. 6h = 00:00, 06:00, 12:00, 18:00 UTC).
+  # Commits starting with [NOTIFY] bypass the digest and send immediately.
   rules: []
 
   # Example rules:
   # rules:
-  #   # Notify the ops team on ALL production deploys
-  #   - project: "*"
-  #     client: "*"
+  #   # Notify ops team on all production deploys, digest every 6 hours
+  #   - server_id: "*"
+  #     server_alias: ""
   #     environments: ["production"]
+  #     send_schedule: "6h"
   #     recipients:
   #       - "ops@example.com"
   #       - "lead@example.com"
   #
-  #   # Notify the client contact on their project deploys
-  #   - project: "my-web-app"
-  #     client: "acme-corp"
+  #   # Commonspace: staging + production, digest daily
+  #   - server_id: "commonspace"
+  #     server_alias: "Commonspace"
   #     environments: ["production", "staging"]
+  #     send_schedule: "1d"
   #     recipients:
-  #       - "client-contact@acme-corp.com"
-  #       - "pm@example.com"
+  #       - "team@example.com"
   #
-  #   # Staging-only alerts for the dev team
-  #   - project: "*"
-  #     client: "*"
+  #   # Staging-only alerts, every 10 minutes
+  #   - server_id: "*"
   #     environments: ["staging"]
+  #     send_schedule: "10m"
   #     recipients:
   #       - "dev-team@example.com"

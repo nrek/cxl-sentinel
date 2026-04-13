@@ -1,7 +1,7 @@
 """CLI management tool for the Sentinel API.
 
 Commands:
-    init-db       Create all database tables
+    init-db       Create all database tables (clean slate: drops existing tables first)
     create-token  Generate a new API token
     list-tokens   Show all registered tokens
     revoke-token  Deactivate a token by name
@@ -13,7 +13,6 @@ import os
 import sys
 from pathlib import Path
 
-# Allow running as `python api/manage.py` from repo root
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from api.auth import generate_token, hash_token
@@ -29,6 +28,7 @@ def _get_config_path() -> str:
 
 
 def _init_db(engine):
+    Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
 
 
@@ -37,7 +37,7 @@ def cmd_init_db(args):
     init_engine(config.database_url)
     engine = get_engine()
     _init_db(engine)
-    print(f"Database initialized: {config.database_url}")
+    print(f"Database initialized (clean slate): {config.database_url}")
 
     if config.tokens:
         session_gen = get_session()
@@ -67,7 +67,7 @@ def cmd_create_token(args):
     config = load_api_config(_get_config_path())
     init_engine(config.database_url)
     engine = get_engine()
-    _init_db(engine)
+    Base.metadata.create_all(bind=engine)
 
     session_gen = get_session()
     session = next(session_gen)
@@ -142,8 +142,7 @@ def cmd_test_email(args):
 
     commit_hash = "a" * 40
     subject, html_body = render_deploy_email(
-        project=args.project,
-        client=args.client,
+        repo_alias=args.repo_alias,
         server_id=args.server,
         environment=args.environment,
         commit_hash=commit_hash,
@@ -201,7 +200,7 @@ def main():
     parser = argparse.ArgumentParser(description="CXL Sentinel API Management")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("init-db", help="Initialize the database schema")
+    subparsers.add_parser("init-db", help="Drop and recreate all database tables (clean slate)")
 
     create_parser = subparsers.add_parser("create-token", help="Generate a new API token")
     create_parser.add_argument("--name", required=True, help="Unique name for the token (e.g., server hostname)")
@@ -226,8 +225,7 @@ def main():
         metavar="EMAIL",
         help="Send test email only to this address (uses active SMTP or SendGrid)",
     )
-    test_parser.add_argument("--project", default="my-web-app", help="Sample project name")
-    test_parser.add_argument("--client", default="acme-corp", help="Sample client id")
+    test_parser.add_argument("--repo-alias", default="my-web-app", dest="repo_alias", help="Sample repo alias")
     test_parser.add_argument("--server", default="prod-web-01", help="Sample server_id")
     test_parser.add_argument(
         "--environment",

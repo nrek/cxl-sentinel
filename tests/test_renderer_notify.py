@@ -7,8 +7,7 @@ from api.notifications.renderer import render_deploy_email
 def test_subject_prefixed_when_notify_marker():
     branding = BrandingConfig()
     subject, _html = render_deploy_email(
-        project="p",
-        client="c",
+        repo_alias="p",
         server_id="s",
         environment="production",
         commit_hash="a" * 40,
@@ -28,8 +27,7 @@ def test_subject_prefixed_when_notify_marker():
 def test_subject_not_prefixed_without_marker():
     branding = BrandingConfig()
     subject, _html = render_deploy_email(
-        project="p",
-        client="c",
+        repo_alias="p",
         server_id="s",
         environment="production",
         commit_hash="a" * 40,
@@ -49,8 +47,7 @@ def test_subject_not_prefixed_without_marker():
 def test_multiline_commit_first_line_only():
     branding = BrandingConfig()
     subject, _html = render_deploy_email(
-        project="p",
-        client="c",
+        repo_alias="p",
         server_id="s",
         environment="production",
         commit_hash="a" * 40,

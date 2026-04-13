@@ -1,45 +1,25 @@
-"""Lightweight SQLite schema fixes for existing databases.
+"""SQLite schema migrations applied at startup.
 
-`Base.metadata.create_all()` does not add columns to tables that already exist.
-This module applies ALTER TABLE for columns added after the first deploy.
+With the v2 schema (repo_alias, no client), existing databases from v1 are not
+compatible. Run `python api/manage.py init-db` to drop and recreate tables.
 """
 
 import logging
-from typing import TYPE_CHECKING
 
 from sqlalchemy import text
-
-if TYPE_CHECKING:
-    from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine
 
 logger = logging.getLogger("sentinel.api.sqlite_migrations")
 
 
-def apply_sqlite_migrations(engine: "Engine") -> None:
-    url = str(engine.url)
-    if not url.startswith("sqlite"):
-        return
-
-    with engine.begin() as conn:
-        _ensure_deploy_events_columns(conn)
-    logger.debug("SQLite migrations applied (if any)")
-
-
-def _ensure_deploy_events_columns(conn) -> None:
+def apply_sqlite_migrations(engine: Engine) -> None:
+    """Run any needed SQLite schema patches. No-op for clean v2 databases."""
     try:
-        result = conn.execute(text("PRAGMA table_info(deploy_events)"))
-    except Exception as e:
-        logger.warning("PRAGMA deploy_events skipped (table may not exist yet): %s", e)
-        return
-
-    columns = {row[1] for row in result}
-
-    if "commit_count" not in columns:
-        conn.execute(
-            text("ALTER TABLE deploy_events ADD COLUMN commit_count INTEGER DEFAULT 1"),
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1 FROM deploy_events LIMIT 0"))
+            conn.execute(text("SELECT 1 FROM digest_state LIMIT 0"))
+            logger.debug("SQLite schema looks current")
+    except Exception:
+        logger.warning(
+            "Schema check failed — run `python api/manage.py init-db` to create or recreate tables."
         )
-        logger.info("Added column deploy_events.commit_count")
-
-    if "contributors" not in columns:
-        conn.execute(text("ALTER TABLE deploy_events ADD COLUMN contributors TEXT"))
-        logger.info("Added column deploy_events.contributors")

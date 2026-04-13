@@ -1,7 +1,7 @@
 """CXL Sentinel Agent -- deployment change detector.
 
 Runs as a systemd service (--mode service) or one-shot scan (--mode oneshot).
-Detects git HEAD changes in configured project directories and reports
+Detects git HEAD changes in configured repo directories and reports
 deploy events to the central Sentinel API.
 """
 
@@ -11,7 +11,6 @@ import logging.handlers
 import signal
 import sys
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 from agent.config import AgentConfig, load_config
@@ -80,55 +79,54 @@ def _handle_usr1(_signum: int, _frame) -> None:
 
 
 def run_scan_cycle(config: AgentConfig, state: StateManager, reporter: Reporter) -> None:
-    """Scan all configured projects for git changes and report events."""
+    """Scan all configured repos for git changes and report events."""
     reporter.send_heartbeat(
         server_id=config.sentinel.server_id,
         environment=config.sentinel.environment,
-        projects=[p.name for p in config.projects],
+        repos=[r.alias for r in config.repos],
         agent_version=get_version(),
     )
 
-    for project in config.projects:
+    for repo in config.repos:
         try:
-            _scan_project(config, project, state, reporter)
+            _scan_repo(config, repo, state, reporter)
         except Exception:
-            logger.exception("Unexpected error scanning project '%s'", project.name)
+            logger.exception("Unexpected error scanning repo '%s'", repo.alias)
 
     state.save()
 
 
-def _scan_project(config, project, state, reporter) -> None:
-    last_hash = state.get_last_hash(project.name)
+def _scan_repo(config, repo, state, reporter) -> None:
+    last_hash = state.get_last_hash(repo.alias)
 
-    branch = project.branch
+    branch = repo.branch
     if not branch or branch == "current":
-        detected = get_current_branch(project.path)
+        detected = get_current_branch(repo.path)
         branch = detected if detected else "unknown"
 
-    result = detect_change(project.path, branch, last_hash)
+    result = detect_change(repo.path, branch, last_hash)
 
     if result.error:
-        logger.warning("Skipping '%s': %s", project.name, result.error)
+        logger.warning("Skipping '%s': %s", repo.alias, result.error)
         return
 
-    state.set_last_hash(project.name, result.current_hash)
+    state.set_last_hash(repo.alias, result.current_hash)
 
     if not result.changed:
-        logger.debug("No change in '%s' (%s)", project.name, result.current_hash[:12])
+        logger.debug("No change in '%s' (%s)", repo.alias, result.current_hash[:12])
         return
 
     metadata = collect_commit_metadata(
-        project.path, result.current_hash, result.previous_hash, branch,
+        repo.path, result.current_hash, result.previous_hash, branch,
     )
     if not metadata:
-        logger.error("Failed to collect metadata for '%s', skipping event", project.name)
+        logger.error("Failed to collect metadata for '%s', skipping event", repo.alias)
         return
 
     reporter.send_event(
         server_id=config.sentinel.server_id,
         environment=config.sentinel.environment,
-        project=project.name,
-        client=project.client,
+        repo_alias=repo.alias,
         metadata=metadata,
     )
 
@@ -187,7 +185,6 @@ def main() -> None:
         if _shutdown_requested:
             break
 
-        # Wait scan_interval seconds, unless SIGUSR1 requests an immediate next cycle.
         waited = 0
         while waited < config.sentinel.scan_interval and not _shutdown_requested:
             if _immediate_scan_requested:

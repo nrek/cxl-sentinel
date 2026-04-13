@@ -31,9 +31,9 @@ async def list_servers(session: Session = Depends(get_session)):
     results = []
     for hb in heartbeats:
         try:
-            projects = json.loads(hb.projects_watched) if hb.projects_watched else []
+            repos = json.loads(hb.repos_watched) if hb.repos_watched else []
         except (json.JSONDecodeError, TypeError):
-            projects = []
+            repos = []
 
         last_seen = hb.last_seen
         if last_seen.tzinfo is None:
@@ -44,7 +44,7 @@ async def list_servers(session: Session = Depends(get_session)):
         results.append(ServerDetail(
             server_id=hb.server_id,
             environment=hb.environment,
-            projects_watched=projects,
+            repos_watched=repos,
             agent_version=hb.agent_version,
             last_seen=last_seen,
             is_alive=is_alive,

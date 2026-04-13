@@ -28,7 +28,7 @@ async def receive_heartbeat(
     session: Session = Depends(get_session),
 ):
     now = datetime.now(timezone.utc)
-    projects_json = json.dumps(payload.projects_watched)
+    repos_json = json.dumps(payload.repos_watched)
 
     existing = session.query(ServerHeartbeat).filter(
         ServerHeartbeat.server_id == payload.server_id,
@@ -36,14 +36,14 @@ async def receive_heartbeat(
 
     if existing:
         existing.environment = payload.environment
-        existing.projects_watched = projects_json
+        existing.repos_watched = repos_json
         existing.agent_version = payload.agent_version
         existing.last_seen = now
     else:
         hb = ServerHeartbeat(
             server_id=payload.server_id,
             environment=payload.environment,
-            projects_watched=projects_json,
+            repos_watched=repos_json,
             agent_version=payload.agent_version,
             last_seen=now,
         )

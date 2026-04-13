@@ -8,17 +8,16 @@ import logging
 from fnmatch import fnmatch
 from typing import Optional
 
-from api.config import NotificationsConfig, ProjectNotificationRule
-from api.notifications.renderer import render_deploy_email
+from api.config import NotificationsConfig, ServerNotificationRule
+from api.notifications.renderer import render_deploy_email, render_digest_email
 from api.notifications import smtp_provider, sendgrid_provider
 
 logger = logging.getLogger("sentinel.notifications.dispatcher")
 
 
-def dispatch_deploy_notification(
+def dispatch_immediate_notification(
     config: NotificationsConfig,
-    project: str,
-    client: str,
+    repo_alias: str,
     server_id: str,
     environment: str,
     commit_hash: str,
@@ -31,22 +30,21 @@ def dispatch_deploy_notification(
     detected_at: str,
     previous_commit_hash: Optional[str],
 ) -> None:
-    """Evaluate notification rules and send emails for a deploy event.
+    """Send an immediate [NOTIFY] email for a single deploy event.
 
-    This is fire-and-forget: failures are logged but do not raise.
+    Fire-and-forget: failures are logged but do not raise.
     """
     if not config.smtp.enabled and not config.sendgrid.enabled:
         return
 
-    recipients = _resolve_recipients(config.rules, project, client, environment)
+    recipients = _resolve_recipients(config.rules, server_id, environment)
     if not recipients:
-        logger.debug("No notification recipients matched for %s/%s (%s)", client, project, environment)
+        logger.debug("No notification recipients matched for %s (%s)", server_id, environment)
         return
 
     try:
         subject, html_body = render_deploy_email(
-            project=project,
-            client=client,
+            repo_alias=repo_alias,
             server_id=server_id,
             environment=environment,
             commit_hash=commit_hash,
@@ -64,29 +62,67 @@ def dispatch_deploy_notification(
         logger.exception("Failed to render deploy notification email")
         return
 
-    sent = False
+    _send(config, recipients, subject, html_body,
+           label=f"[NOTIFY] {repo_alias}@{server_id}/{environment}")
 
+
+def dispatch_digest(
+    config: NotificationsConfig,
+    rule: ServerNotificationRule,
+    environment: str,
+    events: list[dict],
+) -> bool:
+    """Render and send a digest email for a batch of deploy events.
+
+    Returns True if the email was sent successfully.
+    """
+    if not config.smtp.enabled and not config.sendgrid.enabled:
+        return False
+
+    if not rule.recipients:
+        return False
+
+    server_alias = rule.server_alias or rule.server_id
+
+    try:
+        subject, html_body = render_digest_email(
+            server_alias=server_alias,
+            server_id=rule.server_id,
+            environment=environment,
+            events=events,
+            branding=config.branding,
+        )
+    except Exception:
+        logger.exception("Failed to render digest email for %s/%s", rule.server_id, environment)
+        return False
+
+    return _send(config, list(rule.recipients), subject, html_body,
+                  label=f"digest {rule.server_id}/{environment}")
+
+
+def _send(
+    config: NotificationsConfig,
+    recipients: list[str],
+    subject: str,
+    html_body: str,
+    label: str,
+) -> bool:
+    sent = False
     if config.sendgrid.enabled:
         sent = sendgrid_provider.send_email(config.sendgrid, recipients, subject, html_body)
     elif config.smtp.enabled:
         sent = smtp_provider.send_email(config.smtp, recipients, subject, html_body)
 
     if sent:
-        logger.info(
-            "Deploy notification sent for %s/%s to %d recipient(s)",
-            client, project, len(recipients),
-        )
+        logger.info("Notification sent (%s) to %d recipient(s)", label, len(recipients))
     else:
-        logger.warning(
-            "Deploy notification failed for %s/%s — recipients: %s",
-            client, project, ", ".join(recipients),
-        )
+        logger.warning("Notification failed (%s) — recipients: %s", label, ", ".join(recipients))
+    return sent
 
 
 def _resolve_recipients(
-    rules: list[ProjectNotificationRule],
-    project: str,
-    client: str,
+    rules: list[ServerNotificationRule],
+    server_id: str,
     environment: str,
 ) -> list[str]:
     """Collect unique recipients from all matching rules."""
@@ -95,9 +131,7 @@ def _resolve_recipients(
     for rule in rules:
         if environment not in rule.environments:
             continue
-        if not _matches(rule.project, project):
-            continue
-        if not _matches(rule.client, client):
+        if not _matches(rule.server_id, server_id):
             continue
         recipients.update(rule.recipients)
 

@@ -39,8 +39,7 @@ class TestReporter:
         result = reporter.send_event(
             server_id="test-01",
             environment="staging",
-            project="test-app",
-            client="test-client",
+            repo_alias="test-app",
             metadata=sample_metadata,
         )
 
@@ -55,8 +54,7 @@ class TestReporter:
         result = reporter.send_event(
             server_id="test-01",
             environment="staging",
-            project="test-app",
-            client="test-client",
+            repo_alias="test-app",
             metadata=sample_metadata,
         )
 
@@ -70,7 +68,7 @@ class TestReporter:
         result = reporter.send_heartbeat(
             server_id="test-01",
             environment="staging",
-            projects=["app-a", "app-b"],
+            repos=["app-a", "app-b"],
             agent_version="0.1.0",
         )
 
@@ -83,8 +81,7 @@ class TestReporter:
         result = reporter.send_event(
             server_id="test-01",
             environment="staging",
-            project="test-app",
-            client="test-client",
+            repo_alias="test-app",
             metadata=sample_metadata,
         )
 

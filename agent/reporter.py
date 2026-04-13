@@ -33,16 +33,14 @@ class Reporter:
         self,
         server_id: str,
         environment: str,
-        project: str,
-        client: str,
+        repo_alias: str,
         metadata: CommitMetadata,
     ) -> bool:
         """Post a deploy event to the API. Returns True on success."""
         payload = {
             "server_id": server_id,
             "environment": environment,
-            "project": project,
-            "client": client,
+            "repo_alias": repo_alias,
             "commit_hash": metadata.commit_hash,
             "commit_message": metadata.commit_message,
             "commit_author": metadata.commit_author,
@@ -60,21 +58,21 @@ class Reporter:
         success = self._post("/events", payload)
         if not success:
             self.queue.enqueue(payload)
-            logger.warning("Event queued for later delivery: %s@%s", project, metadata.commit_hash[:12])
+            logger.warning("Event queued for later delivery: %s@%s", repo_alias, metadata.commit_hash[:12])
         return success
 
     def send_heartbeat(
         self,
         server_id: str,
         environment: str,
-        projects: list[str],
+        repos: list[str],
         agent_version: str,
     ) -> bool:
         """Post a heartbeat to the API. Returns True on success."""
         payload = {
             "server_id": server_id,
             "environment": environment,
-            "projects_watched": projects,
+            "repos_watched": repos,
             "agent_version": agent_version,
         }
         return self._post("/heartbeat", payload)

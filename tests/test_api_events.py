@@ -54,8 +54,7 @@ def client(db_session):
 SAMPLE_EVENT = {
     "server_id": "test-01",
     "environment": "staging",
-    "project": "test-app",
-    "client": "test-client",
+    "repo_alias": "test-app",
     "commit_hash": "abc1234567890",
     "commit_message": "Test deploy",
     "commit_author": "dev@example.com",
@@ -125,14 +124,14 @@ class TestListEvents:
         assert resp.status_code == 200
         data = resp.json()
         assert len(data) == 1
-        assert data[0]["project"] == "test-app"
+        assert data[0]["repo_alias"] == "test-app"
 
-    def test_filter_by_project(self, client):
+    def test_filter_by_repo_alias(self, client):
         headers_agent = {"Authorization": "Bearer sk-test-agent"}
         headers_admin = {"Authorization": "Bearer sk-test-admin"}
 
         client.post("/api/v1/events", json=SAMPLE_EVENT, headers=headers_agent)
 
-        resp = client.get("/api/v1/events?project=nonexistent", headers=headers_admin)
+        resp = client.get("/api/v1/events?repo_alias=nonexistent", headers=headers_admin)
         assert resp.status_code == 200
         assert len(resp.json()) == 0

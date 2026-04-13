@@ -1,5 +1,6 @@
 """CXL Sentinel API -- FastAPI application entry point."""
 
+import asyncio
 import logging
 import os
 import sys
@@ -11,6 +12,7 @@ from fastapi.responses import JSONResponse
 
 from api.config import load_api_config
 from api.database import init_engine, get_engine
+from api.digest_scheduler import run_digest_scheduler
 from api.models import Base
 from api.routers import events, heartbeat, servers, health
 from api.sqlite_migrations import apply_sqlite_migrations
@@ -41,7 +43,6 @@ async def lifespan(app: FastAPI):
     try:
         config = load_api_config(config_path)
     except (FileNotFoundError, ValueError) as e:
-        # stderr so systemd/journal always shows the reason (logging may not be configured yet)
         print(f"sentinel-api: failed to load config {config_path!r}: {e}", file=sys.stderr, flush=True)
         logger.error("Failed to load config: %s", e)
         sys.exit(1)
@@ -55,8 +56,21 @@ async def lifespan(app: FastAPI):
 
     app.state.config = config
     logger.info("CXL Sentinel API v%s started", _get_version())
-    yield
-    logger.info("CXL Sentinel API shutting down")
+
+    digest_task = asyncio.create_task(
+        run_digest_scheduler(config.notifications),
+        name="digest-scheduler",
+    )
+
+    try:
+        yield
+    finally:
+        digest_task.cancel()
+        try:
+            await digest_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("CXL Sentinel API shutting down")
 
 
 app = FastAPI(

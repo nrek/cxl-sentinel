@@ -20,8 +20,7 @@ class DeployEvent(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     server_id = Column(String(128), nullable=False)
     environment = Column(String(32), nullable=False)
-    project = Column(String(128), nullable=False)
-    client = Column(String(128), nullable=False)
+    repo_alias = Column(String(128), nullable=False)
     branch = Column(String(128), nullable=False, default="main")
     commit_hash = Column(String(64), nullable=False)
     commit_message = Column(Text, nullable=True)
@@ -33,13 +32,13 @@ class DeployEvent(Base):
     contributors = Column(Text, nullable=True)  # JSON array of unique author emails
     detected_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+    notified_immediately = Column(Boolean, nullable=False, default=False)
 
     __table_args__ = (
-        UniqueConstraint("server_id", "project", "commit_hash", name="uq_server_project_commit"),
+        UniqueConstraint("server_id", "repo_alias", "commit_hash", name="uq_server_repo_commit"),
         CheckConstraint("environment IN ('production', 'staging')", name="ck_environment"),
         Index("idx_events_server", "server_id"),
-        Index("idx_events_project", "project"),
-        Index("idx_events_client", "client"),
+        Index("idx_events_repo", "repo_alias"),
         Index("idx_events_env", "environment"),
         Index("idx_events_detected", "detected_at"),
     )
@@ -51,10 +50,18 @@ class ServerHeartbeat(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     server_id = Column(String(128), nullable=False, unique=True)
     environment = Column(String(32), nullable=False)
-    projects_watched = Column(Text, nullable=True)  # JSON array
+    repos_watched = Column(Text, nullable=True)  # JSON array
     agent_version = Column(String(32), nullable=True)
     last_seen = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
     created_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
+
+
+class DigestState(Base):
+    __tablename__ = "digest_state"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    rule_key = Column(String(256), nullable=False, unique=True)
+    last_sent_at = Column(DateTime(timezone=True), nullable=False, default=_utcnow)
 
 
 class ApiToken(Base):

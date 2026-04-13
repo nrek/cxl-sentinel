@@ -2,9 +2,22 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 import yaml
+
+
+def parse_duration(value) -> int:
+    """Parse '5m', '6h', '1d', '300' into seconds."""
+    s = str(value).strip().lower()
+    if s.endswith("m"):
+        return int(s[:-1]) * 60
+    if s.endswith("h"):
+        return int(s[:-1]) * 3600
+    if s.endswith("d"):
+        return int(s[:-1]) * 86400
+    if s.endswith("s"):
+        return int(s[:-1])
+    return int(s)
 
 
 @dataclass
@@ -44,12 +57,14 @@ class BrandingConfig:
 
 
 @dataclass
-class ProjectNotificationRule:
-    """Maps a project (or wildcard '*') to a list of recipient emails."""
-    project: str = "*"
-    client: str = "*"
-    recipients: list[str] = field(default_factory=list)
+class ServerNotificationRule:
+    """Maps a server_id (or wildcard '*') + environments to recipients with a digest schedule."""
+    server_id: str = "*"
+    server_alias: str = ""  # human-readable; falls back to server_id in emails
     environments: list[str] = field(default_factory=lambda: ["production", "staging"])
+    send_schedule: str = "6h"  # digest cadence: 10m, 6h, 1d, 7d
+    send_schedule_seconds: int = 21600  # parsed from send_schedule
+    recipients: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -57,7 +72,7 @@ class NotificationsConfig:
     smtp: SmtpConfig = field(default_factory=SmtpConfig)
     sendgrid: SendGridConfig = field(default_factory=SendGridConfig)
     branding: BrandingConfig = field(default_factory=BrandingConfig)
-    rules: list[ProjectNotificationRule] = field(default_factory=list)
+    rules: list[ServerNotificationRule] = field(default_factory=list)
 
 
 @dataclass
@@ -152,11 +167,14 @@ def _parse_notifications(raw: dict) -> NotificationsConfig:
 
     rules = []
     for r in raw.get("rules", []):
-        rules.append(ProjectNotificationRule(
-            project=str(r.get("project", "*")),
-            client=str(r.get("client", "*")),
-            recipients=[str(e) for e in r.get("recipients", [])],
+        schedule_raw = str(r.get("send_schedule", "6h"))
+        rules.append(ServerNotificationRule(
+            server_id=str(r.get("server_id", "*")),
+            server_alias=str(r.get("server_alias", "")),
             environments=[str(e) for e in r.get("environments", ["production", "staging"])],
+            send_schedule=schedule_raw,
+            send_schedule_seconds=parse_duration(schedule_raw),
+            recipients=[str(e) for e in r.get("recipients", [])],
         ))
 
     return NotificationsConfig(

@@ -12,7 +12,8 @@ from sqlalchemy.orm import Session
 from api.auth import require_role
 from api.database import get_session
 from api.models import DeployEvent
-from api.notifications.dispatcher import dispatch_deploy_notification
+from api.notifications.dispatcher import dispatch_immediate_notification
+from api.notifications.renderer import _commit_requests_immediate_notify
 from api.schemas import DeployEventCreate, DeployEventDetail, DeployEventResponse
 
 logger = logging.getLogger("sentinel.api.events")
@@ -31,11 +32,12 @@ async def create_event(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    is_notify = _commit_requests_immediate_notify(payload.commit_message or "")
+
     event = DeployEvent(
         server_id=payload.server_id,
         environment=payload.environment,
-        project=payload.project,
-        client=payload.client,
+        repo_alias=payload.repo_alias,
         branch=payload.branch,
         commit_hash=payload.commit_hash,
         commit_message=payload.commit_message,
@@ -46,6 +48,7 @@ async def create_event(
         commit_count=payload.commit_count,
         contributors=json.dumps(payload.contributors) if payload.contributors else None,
         detected_at=payload.detected_at,
+        notified_immediately=is_notify,
     )
 
     try:
@@ -56,28 +59,28 @@ async def create_event(
         session.rollback()
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Deploy event already recorded (duplicate server_id + project + commit_hash)",
+            detail="Deploy event already recorded (duplicate server_id + repo_alias + commit_hash)",
         )
 
     logger.info(
         "Recorded deploy: %s/%s@%s on %s",
-        payload.client, payload.project, payload.commit_hash[:12], payload.server_id,
+        payload.repo_alias, payload.commit_hash[:12], payload.environment, payload.server_id,
     )
 
-    _fire_notifications(request, payload)
+    if is_notify:
+        _fire_immediate_notification(request, payload)
 
     return DeployEventResponse(id=event.id)
 
 
-def _fire_notifications(request: Request, payload: DeployEventCreate) -> None:
-    """Send deploy notifications. Failures are logged, never block the response."""
+def _fire_immediate_notification(request: Request, payload: DeployEventCreate) -> None:
+    """Send an immediate [NOTIFY] email. Failures are logged, never block the response."""
     try:
         config = request.app.state.config
         detected_str = payload.detected_at.strftime("%Y-%m-%d %H:%M:%S UTC")
-        dispatch_deploy_notification(
+        dispatch_immediate_notification(
             config=config.notifications,
-            project=payload.project,
-            client=payload.client,
+            repo_alias=payload.repo_alias,
             server_id=payload.server_id,
             environment=payload.environment,
             commit_hash=payload.commit_hash,
@@ -91,7 +94,7 @@ def _fire_notifications(request: Request, payload: DeployEventCreate) -> None:
             previous_commit_hash=payload.previous_commit_hash,
         )
     except Exception:
-        logger.exception("Notification dispatch failed (non-blocking)")
+        logger.exception("[NOTIFY] immediate notification dispatch failed (non-blocking)")
 
 
 @router.get(
@@ -101,8 +104,7 @@ def _fire_notifications(request: Request, payload: DeployEventCreate) -> None:
 )
 async def list_events(
     server_id: Optional[str] = Query(None),
-    project: Optional[str] = Query(None),
-    client: Optional[str] = Query(None),
+    repo_alias: Optional[str] = Query(None),
     environment: Optional[str] = Query(None),
     since: Optional[datetime] = Query(None),
     until: Optional[datetime] = Query(None),
@@ -113,10 +115,8 @@ async def list_events(
 
     if server_id:
         query = query.filter(DeployEvent.server_id == server_id)
-    if project:
-        query = query.filter(DeployEvent.project == project)
-    if client:
-        query = query.filter(DeployEvent.client == client)
+    if repo_alias:
+        query = query.filter(DeployEvent.repo_alias == repo_alias)
     if environment:
         query = query.filter(DeployEvent.environment == environment)
     if since:

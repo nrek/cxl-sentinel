@@ -51,7 +51,7 @@ class TestAuthentication:
             json={
                 "server_id": "test-01",
                 "environment": "production",
-                "projects_watched": [],
+                "repos_watched": [],
                 "agent_version": "0.1.0",
             },
             headers={"Authorization": "Bearer sk-agent-1"},
@@ -64,7 +64,7 @@ class TestAuthentication:
             json={
                 "server_id": "test-01",
                 "environment": "production",
-                "projects_watched": [],
+                "repos_watched": [],
             },
             headers={"Authorization": "Bearer sk-revoked"},
         )
@@ -106,8 +106,8 @@ class TestAuthorization:
         resp = client.post(
             "/api/v1/events",
             json={
-                "server_id": "x", "environment": "staging", "project": "x",
-                "client": "x", "commit_hash": "abc1234", "branch": "main",
+                "server_id": "x", "environment": "staging",
+                "repo_alias": "x", "commit_hash": "abc1234", "branch": "main",
                 "detected_at": "2026-04-10T12:00:00Z",
             },
             headers={"Authorization": "Bearer sk-reader-1"},

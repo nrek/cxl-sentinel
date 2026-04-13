@@ -1,7 +1,4 @@
 # Full example — copy to api/config.yaml and edit. Do not commit real secrets.
-#
-# YAML rule: keys under a list item (- project: ...) must be indented past the
-# "-", aligned with "project:", or the parser fails (often at "client:").
 
 sentinel:
   database_url: "sqlite:///sentinel.db"
@@ -39,8 +36,9 @@ notifications:
     footer_text: ""
 
   rules:
-    - project: "*"
-      client: "*"
+    - server_id: "*"
+      server_alias: ""
       environments: ["production", "staging"]
+      send_schedule: "6h"         # digest cadence: 10m, 6h, 1d, 7d
       recipients:
         - "ops@example.com"

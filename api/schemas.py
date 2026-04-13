@@ -9,8 +9,7 @@ from pydantic import BaseModel, Field
 class DeployEventCreate(BaseModel):
     server_id: str = Field(..., min_length=1, max_length=128)
     environment: str = Field(..., pattern=r"^(production|staging)$")
-    project: str = Field(..., min_length=1, max_length=128)
-    client: str = Field(..., min_length=1, max_length=128)
+    repo_alias: str = Field(..., min_length=1, max_length=128)
     commit_hash: str = Field(..., min_length=7, max_length=64)
     commit_message: Optional[str] = Field(None, max_length=1000)
     commit_author: Optional[str] = Field(None, max_length=256)
@@ -34,8 +33,7 @@ class DeployEventDetail(BaseModel):
     id: int
     server_id: str
     environment: str
-    project: str
-    client: str
+    repo_alias: str
     branch: str
     commit_hash: str
     commit_message: Optional[str]
@@ -54,7 +52,7 @@ class DeployEventDetail(BaseModel):
 class HeartbeatCreate(BaseModel):
     server_id: str = Field(..., min_length=1, max_length=128)
     environment: str = Field(..., pattern=r"^(production|staging)$")
-    projects_watched: list[str] = Field(default_factory=list)
+    repos_watched: list[str] = Field(default_factory=list)
     agent_version: Optional[str] = Field(None, max_length=32)
 
 
@@ -66,7 +64,7 @@ class HeartbeatResponse(BaseModel):
 class ServerDetail(BaseModel):
     server_id: str
     environment: str
-    projects_watched: Optional[list[str]]
+    repos_watched: Optional[list[str]]
     agent_version: Optional[str]
     last_seen: datetime
     is_alive: bool

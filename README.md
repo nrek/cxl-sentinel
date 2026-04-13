@@ -2,7 +2,7 @@
 
 Lightweight deployment tracking for manually deployed web applications.
 
-CXL Sentinel monitors git-based project directories on your servers, detects when deployments happen, and records the events to a central API. It is designed for teams that deploy manually or semi-manually and want visibility into what was deployed, when, and by whom -- without adopting a full CI/CD pipeline.
+CXL Sentinel monitors git-based repo directories on your servers, detects when deployments happen, and records the events to a central API. It is designed for teams that deploy manually or semi-manually and want visibility into what was deployed, when, and by whom -- without adopting a full CI/CD pipeline.
 
 ## Table of contents
 
@@ -12,6 +12,8 @@ CXL Sentinel monitors git-based project directories on your servers, detects whe
 - [Quick Start](#quick-start)
 - [Agent Configuration](#agent-configuration)
   - [Troubleshooting: dubious Git ownership](#troubleshooting-dubious-git-ownership)
+- [Central API Configuration](#central-api-configuration)
+  - [Notification Rules & Digest Scheduling](#notification-rules--digest-scheduling)
 - [API Endpoints](#api-endpoints)
 - [Email Notifications](#email-notifications)
 - [Running Modes](#running-modes)
@@ -25,29 +27,31 @@ CXL Sentinel monitors git-based project directories on your servers, detects whe
 
 ## Features
 
-- **Git-based detection**: Watches `HEAD` for changes in configured project directories
+- **Git-based detection**: Watches `HEAD` for changes in configured repo directories
 - **Commit metadata capture**: Hash, author, message, timestamp, changed file count
-- **Multi-tenant**: Supports multiple clients, projects, servers, and environments
+- **Multi-server**: Supports multiple servers, repos, and environments under one Central API
+- **Digest emails**: Batched summary emails on a configurable schedule (10m, 6h, 1d, 7d) anchored at midnight UTC
+- **`[NOTIFY]` commits**: Bypasses the digest and sends an immediate email; subject is tagged `[NOTIFY]`
 - **Systemd service or cron**: Runs as a persistent service (preferred) or one-shot via cron
 - **Offline resilience**: Queues events locally when the API is unreachable
 - **Token authentication**: Per-agent bearer tokens with role-based access
-- **Email notifications**: Branded HTML emails via SMTP or SendGrid with per-project subscriber rules
-- **`[NOTIFY]` commits**: Optional git hook + `SIGUSR1` to scan immediately after pull; email subject is tagged
+- **Branded HTML emails**: Via SMTP or SendGrid with server-level notification rules
 - **Minimal dependencies**: Agent requires only `requests` and `pyyaml`
 
 ## Architecture
 
 ```
-┌─────────────────────┐       HTTPS         ┌─────────────────────┐
-│   Server (Agent)    │ ──────────────────▶|    Central (API)    │
-│                     │  POST /api/v1/events│                     │
-│  - scans git repos  │  POST /api/v1/hbeat │  - FastAPI + SQLite │
-│  - systemd service  │                     │  - token auth       │
-│  - offline queue    │                     │  - query endpoints  │
-└─────────────────────┘                     └─────────────────────┘
+┌─────────────────────┐       HTTPS         ┌─────────────────────────┐
+│   Server (Agent)    │ ──────────────────▶ │    Central (API)         │
+│                     │  POST /api/v1/events│                          │
+│  - scans git repos  │  POST /api/v1/hbeat │  - FastAPI + SQLite      │
+│  - systemd service  │                     │  - token auth            │
+│  - offline queue    │                     │  - digest scheduler      │
+│                     │                     │  - [NOTIFY] immediate    │
+└─────────────────────┘                     └──────────────────────────┘
 ```
 
-Agents run on each monitored server. The central API can run on any server reachable by the agents.
+Agents run on each monitored server. The central API can run on any server reachable by the agents. One API token (`sk-...`) can be shared across multiple servers using the same `server_id`.
 
 ---
 
@@ -64,7 +68,7 @@ Agents run on each monitored server. The central API can run on any server reach
 | Network       | outbound HTTPS | Agent must reach the central API URL  |
 | Disk          | ~20 MB  | Agent code, venv, state file, log rotation   |
 
-The monitored project directories must be git repositories. The agent reads git metadata -- it does not modify repositories.
+The monitored repo directories must be git repositories. The agent reads git metadata -- it does not modify repositories.
 
 ### Central API server
 
@@ -104,13 +108,13 @@ cp api/config.yaml.example api/config.yaml
 # Edit api/config.yaml with your database URL and settings
 nano api/config.yaml
 
-# Initialize the database and create your first admin token
+# Initialize the database (drops + recreates tables) and create your first admin token
 python api/manage.py init-db
 python api/manage.py create-token --name "admin" --role admin
 # Save the printed token -- it will not be shown again
 
 # Create an agent token for your first server
-python api/manage.py create-token --name "prod-web-01" --role agent
+python api/manage.py create-token --name "commonspace" --role agent
 
 # Start the API (foreground, for testing)
 uvicorn api.main:app --host 0.0.0.0 --port 8400
@@ -129,7 +133,7 @@ sudo bash agent/install.sh
 After installation:
 
 ```bash
-# Edit the agent config with your API URL, token, and project paths
+# Edit the agent config with your API URL, token, and repo paths
 sudo nano /etc/sentinel/agent.yaml
 
 # Enable and start the service
@@ -157,11 +161,7 @@ sudo -u sentinel /opt/sentinel/venv/bin/python /opt/sentinel/agent/verify_connec
 python -m agent.verify_connection --config /path/to/agent.yaml
 ```
 
-If you see `No module named agent.verify_connection`, `/opt/sentinel/agent/` is missing that file (install was from an older tree). **Pull latest** into a git checkout (not `/opt/sentinel` — that tree is not a clone), then run `sudo bash agent/install.sh` from the **repo root**, or copy `agent/verify_connection.py` into `/opt/sentinel/agent/`.
-
-**`/opt/sentinel` is not a git repository** — deploy updates from a clone elsewhere (`git pull` → `sudo bash agent/install.sh`). Re-running `install.sh` from `/opt/sentinel` is supported (in-place upgrade); older scripts incorrectly deleted the source before copying; use the latest `install.sh` if you see `cp: cannot stat` after `rm -rf`.
-
-If `/opt/sentinel/agent` was removed accidentally, restore from a fresh clone on the server: `git clone … /tmp/cxl-sentinel && cd /tmp/cxl-sentinel && sudo bash agent/install.sh`.
+**`/opt/sentinel` is not a git repository** — deploy updates from a clone elsewhere (`git pull` → `sudo bash agent/install.sh`). Re-running `install.sh` from `/opt/sentinel` is supported (in-place upgrade).
 
 You should see `OK` for both steps. If step 1 fails, fix DNS, TLS, firewall, or the reverse proxy to central. If step 2 fails with `401`, the token is wrong or revoked — create a new agent token on central and update `api_token` in `agent.yaml`.
 
@@ -184,19 +184,18 @@ The agent reads `/etc/sentinel/agent.yaml`:
 sentinel:
   api_url: "https://sentinel.example.com/api/v1"
   api_token: "sk-agent-xxxxxxxxxxxx"
-  server_id: "prod-web-01"
+  server_id: "commonspace"
   environment: "production"   # production | staging
-  scan_interval: 300           # seconds between scans (service mode)
+  scan_interval: "5m"         # 5m, 10m, 1h, 6h (minimum 1m)
   state_file: "/var/lib/sentinel/state.json"
 
-projects:
-  - name: "my-web-app"
-    path: "/var/www/my-web-app"
-    client: "acme-corp"
+repos:
+  - alias: "front-end"
+    path: "/var/www/commonspace-ui-v3"
     branch: "main"
-  - name: "my-dashboard"
-    path: "/var/www/my-dashboard"
-    client: "acme-corp"
+
+  - alias: "backend"
+    path: "/var/www/commonspace-app"
     branch: "main"
 
 logging:
@@ -212,28 +211,29 @@ logging:
 |-----|------|---------|-------------|
 | `sentinel.api_url` | string | *required* | Full URL to the central API (include `/api/v1`) |
 | `sentinel.api_token` | string | *required* | Bearer token for this agent |
-| `sentinel.server_id` | string | *required* | Unique identifier for this server |
+| `sentinel.server_id` | string | *required* | Unique identifier for this server/project group |
 | `sentinel.environment` | string | *required* | `production` or `staging` |
-| `sentinel.scan_interval` | int | `300` | Seconds between scans in service mode |
+| `sentinel.scan_interval` | string | `5m` | Duration between scans: `5m`, `10m`, `1h` (minimum `1m`) |
 | `sentinel.state_file` | string | `/var/lib/sentinel/state.json` | Path to state persistence file |
-| `projects[].name` | string | *required* | Human-readable project name |
-| `projects[].path` | string | *required* | Absolute path to the git repository |
-| `projects[].client` | string | *required* | Client/organization identifier |
-| `projects[].branch` | string | current HEAD | Branch to track |
+| `repos[].alias` | string | *required* | Human-readable name for the repo |
+| `repos[].path` | string | *required* | Absolute path to the git repository |
+| `repos[].branch` | string | current HEAD | Branch to track |
 | `logging.level` | string | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR` |
 | `logging.file` | string | `/var/log/sentinel/agent.log` | Log file path |
 | `logging.max_bytes` | int | `10485760` | Max log file size before rotation |
 | `logging.backup_count` | int | `5` | Number of rotated log files to keep |
 
+**One token, many servers:** A single `api_token` (`sk-...`) can be reused across multiple servers sharing the same `server_id`. Each server reports its `environment` and the repos it watches. Central groups events by `server_id + environment`.
+
 ### Troubleshooting: dubious Git ownership
 
-On production servers the git checkout is often owned by **`www-data`** or another deploy user, while the Sentinel agent runs as the unprivileged **`sentinel`** user. Git 2.35+ treats that as **dubious ownership** and refuses to run in the repo. The agent logs a warning and skips the project, for example:
+On production servers the git checkout is often owned by **`www-data`** or another deploy user, while the Sentinel agent runs as the unprivileged **`sentinel`** user. Git 2.35+ treats that as **dubious ownership** and refuses to run in the repo. The agent logs a warning and skips the repo, for example:
 
 ```text
-Skipping 'PHALANX': git rev-parse HEAD failed: fatal: detected dubious ownership in repository at '/var/www/...'
+Skipping 'front-end': git rev-parse HEAD failed: fatal: detected dubious ownership in repository at '/var/www/...'
 ```
 
-**Do not rely on** `git config --global --add safe.directory …` **run only as root or your personal user** — `global` means “this user’s `~/.gitconfig`”. The systemd service does not read that file. The **`sentinel`** user often has **no home directory**, so `sudo -u sentinel git config --global …` can fail with:
+**Do not rely on** `git config --global --add safe.directory …` **run only as root or your personal user** — `global` means "this user's `~/.gitconfig`". The systemd service does not read that file. The **`sentinel`** user often has **no home directory**, so `sudo -u sentinel git config --global …` can fail with:
 
 ```text
 error: could not lock config file /home/sentinel/.gitconfig: No such file or directory
@@ -278,6 +278,52 @@ sudo -u sentinel git -C /var/www/your-app rev-parse HEAD
 
 ---
 
+## Central API Configuration
+
+The central API reads `api/config.yaml` (or the path in `SENTINEL_CONFIG`). See `api/config.yaml.example` for the full reference.
+
+### Notification Rules & Digest Scheduling
+
+Rules map a `server_id` (or `"*"` wildcard) to a list of recipient emails with a digest schedule:
+
+```yaml
+notifications:
+  rules:
+    - server_id: "commonspace"
+      server_alias: "Commonspace"       # human-readable, used in email headers
+      environments: ["production", "staging"]
+      send_schedule: "6h"               # digest cadence: 10m, 6h, 1d, 7d
+      recipients:
+        - "ops@example.com"
+        - "lead@example.com"
+
+    - server_id: "*"
+      environments: ["staging"]
+      send_schedule: "10m"
+      recipients:
+        - "dev-team@example.com"
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `server_id` | string | `"*"` | Match against the agent's `sentinel.server_id`; `"*"` matches all |
+| `server_alias` | string | server_id | Human-readable label used in email headers |
+| `environments` | list | `["production", "staging"]` | Which environments trigger this rule |
+| `send_schedule` | string | `"6h"` | Digest cadence: `10m`, `6h`, `1d`, `7d` |
+| `recipients` | list | `[]` | Email addresses to receive the digest |
+
+**How digests work:**
+
+- Deploy events are stored in the database as they arrive.
+- A background scheduler ticks every 60 seconds and checks each rule's window.
+- Windows are anchored at **midnight UTC**: a `6h` schedule fires at 00:00, 06:00, 12:00, 18:00 UTC.
+- When a window boundary is crossed, all unsent events for that `server_id + environment` are collected into a single **digest email**.
+- If no events occurred since the last digest, no email is sent.
+
+**`[NOTIFY]` bypass:** When a commit message starts with `[NOTIFY]`, the event is sent **immediately** as a single-event email (current behavior) in addition to appearing in the next digest. The digest template notes which events were already sent immediately.
+
+---
+
 ## API Endpoints
 
 All endpoints (except `/health`) require `Authorization: Bearer <token>`.
@@ -290,13 +336,11 @@ All endpoints (except `/health`) require `Authorization: Bearer <token>`.
 | `GET`  | `/api/v1/servers` | admin, readonly | List servers and heartbeat status |
 | `GET`  | `/api/v1/health` | *none* | API health check |
 
-See the [API contract](docs/api.md) for full request/response schemas (generated after first run).
-
 ---
 
 ## Email Notifications
 
-CXL Sentinel can send branded HTML email notifications when deploys are detected. Two providers are supported -- configure one in `api/config.yaml`:
+CXL Sentinel sends branded HTML email notifications when deploys are detected. Two providers are supported -- configure one in `api/config.yaml`:
 
 ### Provider: SMTP (Gmail, Outlook, self-hosted)
 
@@ -328,29 +372,6 @@ notifications:
 
 If both providers are enabled, SendGrid takes priority.
 
-### Notification Rules
-
-Rules map projects and clients to recipient lists. Use `"*"` as a wildcard. Multiple rules can overlap -- recipients are de-duplicated.
-
-```yaml
-notifications:
-  rules:
-    # All production deploys go to the ops team
-    - project: "*"
-      client: "*"
-      environments: ["production"]
-      recipients:
-        - "ops-team@example.com"
-        - "lead@example.com"
-
-    # Client-specific notifications
-    - project: "my-web-app"
-      client: "acme-corp"
-      environments: ["production", "staging"]
-      recipients:
-        - "client@acme-corp.com"
-```
-
 ### Branding
 
 Customize the email appearance:
@@ -359,7 +380,7 @@ Customize the email appearance:
 notifications:
   branding:
     logo_url: "https://example.com/logo.png"
-    accent_color: "#2563eb"       # stats row + “Latest change” callout border (body)
+    accent_color: "#2563eb"       # stats row + "Latest change" callout border (body)
     header_theme: "light"         # "dark" = light text on header; "light" = dark text
     header_background: "#cdcdcd"  # top banner strip only; omit to reuse accent_color
     company_name: "Your Company"
@@ -368,7 +389,14 @@ notifications:
 
 Use `header_theme` + `header_background` when the logo is dark on a light strip (or the inverse): the header title, subtitle, and environment pill follow the theme. `accent_color` stays on the summary stats and the left border of the latest-commit block.
 
-The HTML template is in `api/notifications/templates/deploy_notification.html` and can be edited directly for deeper customization.
+### Email templates
+
+| Template | Used for |
+|----------|----------|
+| `api/notifications/templates/deploy_notification.html` | Single-event email (immediate `[NOTIFY]`) |
+| `api/notifications/templates/digest_notification.html` | Batched digest summary |
+
+Both templates support `{{ variable }}` and `{% if var %}...{% endif %}` blocks.
 
 ### Test email (dry-run)
 
@@ -384,7 +412,7 @@ Prints the subject and full HTML using sample deploy data—no SMTP/SendGrid cal
 python api/manage.py test-email --to you@example.com
 ```
 
-Optional flags: `--project`, `--client`, `--server`, `--environment` (`production` or `staging`), `--message`, `--author`, `--files`, `--commits`, `--contributor` (comma-separated), `--branch`, `--detected-at` (ISO 8601).
+Optional flags: `--repo-alias`, `--server`, `--environment` (`production` or `staging`), `--message`, `--author`, `--files`, `--commits`, `--contributor` (comma-separated), `--branch`, `--detected-at`.
 
 ---
 
@@ -414,9 +442,9 @@ For environments where a persistent service is not desired:
 
 ### NOTIFY: immediate scan after pull
 
-Long `scan_interval` values mean a deploy can sit on disk for hours before the next scan. If the **latest commit’s first line** starts with **`[NOTIFY]`** (example: `[NOTIFY] Hotfix payment callback`), you can:
+Long `scan_interval` values mean a deploy can sit on disk for minutes before the next scan. If the **latest commit's first line** starts with **`[NOTIFY]`** (example: `[NOTIFY] Hotfix payment callback`), you can:
 
-1. **Tag the email** — the central API prefixes the notification **subject** with `[NOTIFY]` when that marker is present (no extra agent logic).
+1. **Immediate email** — the central API sends the notification **immediately** to all matched recipients, bypassing the digest schedule. The email subject is prefixed with `[NOTIFY]`.
 2. **Skip the rest of the wait** — signal the agent to run the next scan **immediately** instead of sleeping until `scan_interval` elapses:
 
    ```bash
@@ -481,7 +509,7 @@ sudo journalctl -u sentinel-api -f
 
 #### Heartbeat returns 500 but `/health` is OK
 
-`/health` does not touch the database; **`POST /heartbeat` writes SQLite**. A 500 almost always means the API process cannot write the DB file or the file’s schema is older than the code.
+`/health` does not touch the database; **`POST /heartbeat` writes SQLite**. A 500 almost always means the API process cannot write the DB file or the file's schema is older than the code.
 
 1. **Inspect the real error** (on the central server):
 
@@ -495,13 +523,10 @@ sudo journalctl -u sentinel-api -f
 
    ```bash
    sudo chown -R www-data:www-data /var/www/cxl-sentinel/sentinel.db /var/www/cxl-sentinel/sentinel.db-wal /var/www/cxl-sentinel/sentinel.db-shm 2>/dev/null
-   # or chown the whole project dir if the DB lives there
    sudo systemctl restart sentinel-api
    ```
 
-   If `database_url` uses an absolute path (e.g. `sqlite:////var/lib/sentinel/sentinel.db`), ensure that path exists and is writable by the service user.
-
-3. **Schema drift** — after upgrading code, restart `sentinel-api` once so startup can run SQLite column fixes (`commit_count` / `contributors` on `deploy_events`). If problems persist, paste the journal traceback.
+3. **Schema drift** — after upgrading code, run `python api/manage.py init-db` to drop and recreate tables (clean slate). This is a **destructive** operation—back up the DB first if you need historical data.
 
 #### `manage.py`: `attempt to write a readonly database`
 
@@ -514,10 +539,6 @@ cd /var/www/cxl-sentinel
 sudo -u www-data env SENTINEL_CONFIG=/var/www/cxl-sentinel/api/config.yaml \
   .venv/bin/python api/manage.py create-token --name "my-admin" --role admin
 ```
-
-Use the same pattern for `init-db`, `list-tokens`, `revoke-token`, and `test-email` when they must write or when the DB is not writable by your interactive user.
-
-**Alternatively**, change ownership of the DB files to a dedicated admin user and run both the API and `manage.py` as that user—only do this if you adjust the systemd `User=` to match, or the API will lose write access.
 
 Bind to `127.0.0.1` and place a reverse proxy (Nginx, Caddy) in front for TLS. A minimal Nginx config:
 
@@ -613,33 +634,39 @@ cxl-sentinel/
 │   └── hooks/
 │       └── post-merge-notify.example.sh  # optional: SIGUSR1 after [NOTIFY] pull
 ├── api/
-│   ├── main.py                 # FastAPI application
-│   ├── config.py               # API config loader
+│   ├── main.py                 # FastAPI application + digest scheduler launch
+│   ├── config.py               # API config loader (rules, branding, providers)
 │   ├── auth.py                 # bearer token middleware
-│   ├── models.py               # SQLAlchemy ORM models
+│   ├── models.py               # SQLAlchemy ORM models (deploy_events, digest_state, etc.)
 │   ├── schemas.py              # Pydantic request/response schemas
 │   ├── database.py             # DB engine + session factory
+│   ├── digest_scheduler.py     # background task: midnight-anchored digest windows
 │   ├── routers/
-│   │   ├── events.py           # deploy event endpoints
+│   │   ├── events.py           # deploy event endpoints + [NOTIFY] immediate send
 │   │   ├── heartbeat.py        # heartbeat endpoint
 │   │   ├── servers.py          # server listing endpoint
 │   │   └── health.py           # health check
 │   ├── notifications/
-│   │   ├── dispatcher.py       # rule matching + provider routing
-│   │   ├── renderer.py         # HTML template engine
+│   │   ├── dispatcher.py       # rule matching + provider routing (immediate + digest)
+│   │   ├── renderer.py         # HTML template engine (single-event + digest)
 │   │   ├── smtp_provider.py    # SMTP/Gmail sender
 │   │   ├── sendgrid_provider.py # SendGrid API sender
 │   │   └── templates/
-│   │       └── deploy_notification.html
-│   ├── manage.py               # CLI: init-db, create-token
+│   │       ├── deploy_notification.html   # single-event email
+│   │       └── digest_notification.html   # batched digest email
+│   ├── manage.py               # CLI: init-db, create-token, test-email
+│   ├── simulate_central_flow.py # end-to-end flow simulation for testing
 │   ├── requirements.txt        # API runtime deps
-│   └── config.yaml.example     # example configuration
+│   ├── example.config.yaml     # quick-start example config
+│   └── config.yaml.example     # fully documented example config
 └── tests/
     ├── test_detector.py
     ├── test_collector.py
     ├── test_reporter.py
     ├── test_api_events.py
-    └── test_api_auth.py
+    ├── test_api_auth.py
+    ├── test_renderer_notify.py
+    └── test_digest_scheduler.py
 ```
 
 ---

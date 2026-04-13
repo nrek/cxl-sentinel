@@ -3,19 +3,21 @@ sentinel:
   api_token: "sk-agent-xxxxxxxxxxxx"
   server_id: "prod-web-01"
   environment: "production"   # production | staging
-  scan_interval: 300           # seconds between scans (service mode only)
+  scan_interval: "5m"         # 5m, 10m, 1h, 6h (minimum 1m)
   state_file: "/var/lib/sentinel/state.json"
 
-projects:
-  - name: "my-web-app"
-    path: "/var/www/my-web-app"
-    client: "acme-corp"
+repos:
+  - alias: "front-end"
+    path: "/var/www/my-frontend"
     branch: "main"             # optional, defaults to current HEAD branch
 
-  # Add more projects as needed:
-  # - name: "my-dashboard"
-  #   path: "/var/www/my-dashboard"
-  #   client: "acme-corp"
+  - alias: "backend"
+    path: "/var/www/my-backend"
+    branch: "main"
+
+  # Add more repos as needed:
+  # - alias: "api-service"
+  #   path: "/var/www/api-service"
   #   branch: "main"
 
 logging:

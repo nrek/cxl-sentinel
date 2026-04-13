@@ -19,7 +19,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-# Allow `python /opt/sentinel/agent/verify_connection.py` — package root must be on sys.path
 _repo_root = str(Path(__file__).resolve().parent.parent)
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
@@ -74,7 +73,6 @@ def main() -> None:
     print(f"Agent version:    {get_version()}")
     print()
 
-    # 1) Public health (no auth) — proves DNS/TLS/proxy reach the API process
     health = _health_url(api_url)
     print(f"1. GET  {health}")
     try:
@@ -93,12 +91,11 @@ def main() -> None:
         print(f"   FAIL  {e}", file=sys.stderr)
         sys.exit(1)
 
-    # 2) Authenticated heartbeat — proves token + routing + DB on central
     hb_url = _heartbeat_url(api_url)
     payload = {
         "server_id": cfg.sentinel.server_id,
         "environment": cfg.sentinel.environment,
-        "projects_watched": [p.name for p in cfg.projects],
+        "repos_watched": [r.alias for r in cfg.repos],
         "agent_version": get_version(),
     }
     print()

@@ -1,30 +1,39 @@
 """YAML configuration loader and validation for the Sentinel agent."""
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
 
+def parse_duration(value) -> int:
+    """Parse '5m', '6h', '1d', '300' into seconds."""
+    s = str(value).strip().lower()
+    if s.endswith("m"):
+        return int(s[:-1]) * 60
+    if s.endswith("h"):
+        return int(s[:-1]) * 3600
+    if s.endswith("d"):
+        return int(s[:-1]) * 86400
+    if s.endswith("s"):
+        return int(s[:-1])
+    return int(s)
+
+
 @dataclass
-class ProjectConfig:
-    name: str
+class RepoConfig:
+    alias: str
     path: str
-    client: str
     branch: str = "main"
 
     def validate(self) -> list[str]:
         errors = []
-        if not self.name:
-            errors.append("Project name is required")
+        if not self.alias:
+            errors.append("Repo alias is required")
         if not self.path:
-            errors.append(f"Project '{self.name}': path is required")
+            errors.append(f"Repo '{self.alias}': path is required")
         elif not Path(self.path).is_absolute():
-            errors.append(f"Project '{self.name}': path must be absolute, got '{self.path}'")
-        if not self.client:
-            errors.append(f"Project '{self.name}': client is required")
+            errors.append(f"Repo '{self.alias}': path must be absolute, got '{self.path}'")
         return errors
 
 
@@ -34,7 +43,7 @@ class SentinelConfig:
     api_token: str
     server_id: str
     environment: str
-    scan_interval: int = 300
+    scan_interval: int = 300  # stored as seconds internally
     state_file: str = "/var/lib/sentinel/state.json"
 
     def validate(self) -> list[str]:
@@ -47,8 +56,8 @@ class SentinelConfig:
             errors.append("sentinel.server_id is required")
         if self.environment not in ("production", "staging"):
             errors.append(f"sentinel.environment must be 'production' or 'staging', got '{self.environment}'")
-        if self.scan_interval < 10:
-            errors.append(f"sentinel.scan_interval must be >= 10 seconds, got {self.scan_interval}")
+        if self.scan_interval < 60:
+            errors.append(f"sentinel.scan_interval must be >= 60 seconds (1m), got {self.scan_interval}")
         return errors
 
 
@@ -70,16 +79,16 @@ class LoggingConfig:
 @dataclass
 class AgentConfig:
     sentinel: SentinelConfig
-    projects: list[ProjectConfig] = field(default_factory=list)
+    repos: list[RepoConfig] = field(default_factory=list)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
 
     def validate(self) -> list[str]:
         errors = self.sentinel.validate()
         errors.extend(self.logging.validate())
-        if not self.projects:
-            errors.append("At least one project must be configured")
-        for project in self.projects:
-            errors.extend(project.validate())
+        if not self.repos:
+            errors.append("At least one repo must be configured")
+        for repo in self.repos:
+            errors.extend(repo.validate())
         return errors
 
 
@@ -106,17 +115,16 @@ def load_config(path: str) -> AgentConfig:
         api_token=str(sentinel_raw.get("api_token", "")),
         server_id=str(sentinel_raw.get("server_id", "")),
         environment=str(sentinel_raw.get("environment", "")),
-        scan_interval=int(sentinel_raw.get("scan_interval", 300)),
+        scan_interval=parse_duration(sentinel_raw.get("scan_interval", "5m")),
         state_file=str(sentinel_raw.get("state_file", "/var/lib/sentinel/state.json")),
     )
 
-    projects = []
-    for p in raw.get("projects", []):
-        projects.append(ProjectConfig(
-            name=str(p.get("name", "")),
-            path=str(p.get("path", "")),
-            client=str(p.get("client", "")),
-            branch=str(p.get("branch", "main")),
+    repos = []
+    for r in raw.get("repos", []):
+        repos.append(RepoConfig(
+            alias=str(r.get("alias", "")),
+            path=str(r.get("path", "")),
+            branch=str(r.get("branch", "main")),
         ))
 
     logging_raw = raw.get("logging", {})
@@ -127,7 +135,7 @@ def load_config(path: str) -> AgentConfig:
         backup_count=int(logging_raw.get("backup_count", 5)),
     )
 
-    config = AgentConfig(sentinel=sentinel, projects=projects, logging=logging_cfg)
+    config = AgentConfig(sentinel=sentinel, repos=repos, logging=logging_cfg)
 
     errors = config.validate()
     if errors:
