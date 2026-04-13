@@ -15,6 +15,7 @@ CXL Sentinel monitors git-based project directories on your servers, detects whe
 - [API Endpoints](#api-endpoints)
 - [Email Notifications](#email-notifications)
 - [Running Modes](#running-modes)
+  - [NOTIFY: immediate scan after pull](#notify-immediate-scan-after-pull)
 - [Uninstalling the Agent](#uninstalling-the-agent)
 - [Running the API in Production](#running-the-api-in-production)
 - [Development](#development)
@@ -31,6 +32,7 @@ CXL Sentinel monitors git-based project directories on your servers, detects whe
 - **Offline resilience**: Queues events locally when the API is unreachable
 - **Token authentication**: Per-agent bearer tokens with role-based access
 - **Email notifications**: Branded HTML emails via SMTP or SendGrid with per-project subscriber rules
+- **`[NOTIFY]` commits**: Optional git hook + `SIGUSR1` to scan immediately after pull; email subject is tagged
 - **Minimal dependencies**: Agent requires only `requests` and `pyyaml`
 
 ## Architecture
@@ -410,6 +412,25 @@ For environments where a persistent service is not desired:
 */5 * * * * /opt/sentinel/venv/bin/python /opt/sentinel/agent/agent.py --mode oneshot --config /etc/sentinel/agent.yaml >> /var/log/sentinel/cron.log 2>&1
 ```
 
+### NOTIFY: immediate scan after pull
+
+Long `scan_interval` values mean a deploy can sit on disk for hours before the next scan. If the **latest commit’s first line** starts with **`[NOTIFY]`** (example: `[NOTIFY] Hotfix payment callback`), you can:
+
+1. **Tag the email** — the central API prefixes the notification **subject** with `[NOTIFY]` when that marker is present (no extra agent logic).
+2. **Skip the rest of the wait** — signal the agent to run the next scan **immediately** instead of sleeping until `scan_interval` elapses:
+
+   ```bash
+   sudo systemctl kill --signal=SIGUSR1 sentinel-agent
+   ```
+
+   The running service catches `SIGUSR1`, ends the sleep early, and runs another full scan cycle on the next loop iteration.
+
+**Git hook (recommended):** after `git pull` / merge, only signal when the new `HEAD` commit uses the prefix. Copy and adapt the example:
+
+`agent/hooks/post-merge-notify.example.sh` → `.git/hooks/post-merge` in each monitored repo (executable). It runs `systemctl kill --signal=SIGUSR1 sentinel-agent` when `git log -1 --pretty=%s` starts with `[NOTIFY]`.
+
+**Manual test:** after a pull that updates `HEAD` with a `[NOTIFY]` message, run the `systemctl kill` line above; check `journalctl -u sentinel-agent` for `Immediate scan requested (SIGUSR1)`.
+
 ---
 
 ## Uninstalling the Agent
@@ -588,7 +609,9 @@ cxl-sentinel/
 │   ├── install.sh              # server install script
 │   ├── uninstall.sh            # server removal script
 │   ├── sentinel-agent.service  # systemd unit file
-│   └── agent.yaml.example      # example configuration
+│   ├── agent.yaml.example      # example configuration
+│   └── hooks/
+│       └── post-merge-notify.example.sh  # optional: SIGUSR1 after [NOTIFY] pull
 ├── api/
 │   ├── main.py                 # FastAPI application
 │   ├── config.py               # API config loader

@@ -24,6 +24,7 @@ logger = logging.getLogger("sentinel")
 
 _VERSION_FILE = Path(__file__).resolve().parent.parent / "VERSION"
 _shutdown_requested = False
+_immediate_scan_requested = False
 
 
 def get_version() -> str:
@@ -65,6 +66,17 @@ def _handle_signal(signum: int, _frame) -> None:
     global _shutdown_requested
     logger.info("Received signal %d, shutting down gracefully...", signum)
     _shutdown_requested = True
+
+
+def _handle_usr1(_signum: int, _frame) -> None:
+    """Request an immediate scan cycle (skips the remainder of scan_interval wait).
+
+    Used with git hooks after a pull whose latest commit starts with [NOTIFY]:
+      sudo systemctl kill -s SIGUSR1 sentinel-agent
+    """
+    global _immediate_scan_requested
+    _immediate_scan_requested = True
+    logger.info("Immediate scan requested (SIGUSR1) — next cycle runs without waiting for scan_interval")
 
 
 def run_scan_cycle(config: AgentConfig, state: StateManager, reporter: Reporter) -> None:
@@ -154,10 +166,17 @@ def main() -> None:
         logger.info("Oneshot scan complete")
         return
 
+    global _immediate_scan_requested
+
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
+    if hasattr(signal, "SIGUSR1"):
+        signal.signal(signal.SIGUSR1, _handle_usr1)
 
-    logger.info("Service mode: scanning every %d seconds", config.sentinel.scan_interval)
+    logger.info(
+        "Service mode: scanning every %d seconds (SIGUSR1 triggers an immediate scan)",
+        config.sentinel.scan_interval,
+    )
 
     while not _shutdown_requested:
         try:
@@ -165,10 +184,17 @@ def main() -> None:
         except Exception:
             logger.exception("Unhandled error in scan cycle")
 
-        for _ in range(config.sentinel.scan_interval):
-            if _shutdown_requested:
+        if _shutdown_requested:
+            break
+
+        # Wait scan_interval seconds, unless SIGUSR1 requests an immediate next cycle.
+        waited = 0
+        while waited < config.sentinel.scan_interval and not _shutdown_requested:
+            if _immediate_scan_requested:
+                _immediate_scan_requested = False
                 break
             time.sleep(1)
+            waited += 1
 
     logger.info("Agent shutdown complete")
 

@@ -13,6 +13,14 @@ from api.config import BrandingConfig
 
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
+_NOTIFY_PREFIX = "[NOTIFY]"
+
+
+def _commit_requests_immediate_notify(commit_message: str) -> bool:
+    """True if the first line of the latest commit message starts with [NOTIFY]."""
+    first_line = (commit_message or "").split("\n", 1)[0].lstrip()
+    return first_line.startswith(_NOTIFY_PREFIX)
+
 
 def _header_style_vars(branding: BrandingConfig) -> dict[str, str]:
     """Colors for the top banner only. Body still uses accent_color."""
@@ -65,7 +73,11 @@ def render_deploy_email(
     html = template_path.read_text(encoding="utf-8")
 
     env_label = environment.capitalize()
-    subject = f"[{env_label}] {project} updated — {files_changed} files, {commit_count} commit{'s' if commit_count != 1 else ''}"
+    notify_tag = f"{_NOTIFY_PREFIX} " if _commit_requests_immediate_notify(commit_message) else ""
+    subject = (
+        f"{notify_tag}[{env_label}] {project} updated — {files_changed} files, "
+        f"{commit_count} commit{'s' if commit_count != 1 else ''}"
+    )
 
     contributor_count = len(contributors) if contributors else 1
     contributors_display = ", ".join(contributors) if contributors else commit_author
