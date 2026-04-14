@@ -39,6 +39,13 @@ def _current_window_start(now: datetime, interval_seconds: int) -> datetime:
     return midnight + timedelta(seconds=window_index * interval_seconds)
 
 
+def _ensure_aware(dt: datetime) -> datetime:
+    """Attach UTC if the datetime is naive (common with SQLite)."""
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
 def _is_window_due(
     now: datetime,
     interval_seconds: int,
@@ -48,7 +55,7 @@ def _is_window_due(
     window_start = _current_window_start(now, interval_seconds)
     if last_sent_at is None:
         return True
-    return last_sent_at < window_start
+    return _ensure_aware(last_sent_at) < window_start
 
 
 def _get_or_create_digest_state(session: Session, key: str) -> DigestState:
@@ -67,9 +74,10 @@ def _query_events_since(
     since: datetime,
 ) -> list[DeployEvent]:
     """Fetch deploy events for this server_id + environment since the given timestamp."""
+    since_aware = _ensure_aware(since) if since.tzinfo is None else since
     q = session.query(DeployEvent).filter(
         DeployEvent.environment == environment,
-        DeployEvent.detected_at > since,
+        DeployEvent.detected_at > since_aware,
     )
     if server_id != "*":
         q = q.filter(DeployEvent.server_id == server_id)
