@@ -154,6 +154,18 @@ python api/manage.py test-email --dry-run                    # print HTML only
 python api/manage.py test-email --to you@example.com         # send one test
 ```
 
+### Welcome email
+
+Introduce recipients to Sentinel before deploy notifications start arriving. Collects every unique email across all notification rules and sends a branded welcome message.
+
+```bash
+# Preview (sends only to you)
+SENTINEL_CONFIG=api/config.yaml python api/send_welcome.py --preview you@example.com
+
+# Send to all recipients
+SENTINEL_CONFIG=api/config.yaml python api/send_welcome.py
+```
+
 Templates live in `api/notifications/templates/` — `deploy_notification.html` (single event) and `digest_notification.html` (batched digest).
 
 ---
@@ -306,6 +318,8 @@ cxl-sentinel/
 │   ├── database.py             # DB engine + sessions
 │   ├── digest_scheduler.py     # background digest task
 │   ├── manage.py               # CLI: init-db, create-token, test-email
+│   ├── send_welcome.py         # send welcome email to all recipients
+│   ├── migrate_config.py       # migrate old config format to current
 │   ├── simulate_central_flow.py
 │   ├── routers/                # events, heartbeat, servers, health
 │   ├── notifications/
