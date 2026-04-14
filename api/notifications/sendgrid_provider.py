@@ -2,6 +2,7 @@
 
 Uses the SendGrid v3 Mail Send API directly via requests,
 avoiding the heavy sendgrid-python SDK.
+Recipients are placed in BCC; the TO line is the sender address.
 """
 
 import logging
@@ -21,17 +22,7 @@ def send_email(
     subject: str,
     html_body: str,
 ) -> bool:
-    """Send an HTML email via SendGrid.
-
-    Args:
-        config: SendGrid API settings.
-        recipients: List of email addresses.
-        subject: Email subject line.
-        html_body: Rendered HTML content.
-
-    Returns:
-        True on success, False on failure.
-    """
+    """Send an HTML email via SendGrid. TO is the sender; recipients go in BCC."""
     if not recipients:
         logger.debug("No recipients, skipping SendGrid send")
         return True
@@ -39,7 +30,8 @@ def send_email(
     payload = {
         "personalizations": [
             {
-                "to": [{"email": addr} for addr in recipients],
+                "to": [{"email": config.from_address}],
+                "bcc": [{"email": addr} for addr in recipients],
                 "subject": subject,
             }
         ],

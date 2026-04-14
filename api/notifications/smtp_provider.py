@@ -1,6 +1,7 @@
 """SMTP email provider for deploy notifications.
 
 Supports standard SMTP (Gmail, Outlook, self-hosted) with TLS.
+Recipients are placed in BCC; the TO line is the sender address.
 """
 
 import logging
@@ -19,17 +20,7 @@ def send_email(
     subject: str,
     html_body: str,
 ) -> bool:
-    """Send an HTML email via SMTP.
-
-    Args:
-        config: SMTP connection settings.
-        recipients: List of email addresses.
-        subject: Email subject line.
-        html_body: Rendered HTML content.
-
-    Returns:
-        True on success, False on failure.
-    """
+    """Send an HTML email via SMTP. TO is the sender; recipients go in BCC."""
     if not recipients:
         logger.debug("No recipients, skipping SMTP send")
         return True
@@ -37,11 +28,14 @@ def send_email(
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = f"{config.from_name} <{config.from_address}>"
-    msg["To"] = ", ".join(recipients)
+    msg["To"] = config.from_address
+    msg["Bcc"] = ", ".join(recipients)
 
     plain_text = _html_to_plain_fallback(subject)
     msg.attach(MIMEText(plain_text, "plain", "utf-8"))
     msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+    envelope_recipients = list({config.from_address} | set(recipients))
 
     try:
         if config.use_tls:
@@ -55,7 +49,7 @@ def send_email(
         if config.username and config.password:
             server.login(config.username, config.password)
 
-        server.sendmail(config.from_address, recipients, msg.as_string())
+        server.sendmail(config.from_address, envelope_recipients, msg.as_string())
         server.quit()
 
         logger.info("Email sent via SMTP to %d recipient(s): %s", len(recipients), subject)
