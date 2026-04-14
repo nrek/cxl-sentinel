@@ -52,6 +52,13 @@ notifications:
     company_name: ""           # Shown next to logo
     footer_text: ""            # Extra text in the email footer
 
+  # --- Delivery behavior ---
+  # use_bcc: true puts recipients in BCC (prevents reply-all group chains).
+  # to_address: visible in the To: header when use_bcc is true.
+  #             Defaults to from_address if blank.
+  use_bcc: true
+  to_address: ""                # e.g. "notifications@example.com"
+
   # --- Notification Rules ---
   # Each rule maps a server_id (or "*" wildcard) to recipients with a digest schedule.
   # `send_schedule` controls how often digest emails are sent (10m, 6h, 1d, 7d).

@@ -107,11 +107,20 @@ def _send(
     html_body: str,
     label: str,
 ) -> bool:
+    use_bcc = config.use_bcc
+    to_address = config.to_address or ""
+
     sent = False
     if config.sendgrid.enabled:
-        sent = sendgrid_provider.send_email(config.sendgrid, recipients, subject, html_body)
+        sent = sendgrid_provider.send_email(
+            config.sendgrid, recipients, subject, html_body,
+            use_bcc=use_bcc, to_address=to_address,
+        )
     elif config.smtp.enabled:
-        sent = smtp_provider.send_email(config.smtp, recipients, subject, html_body)
+        sent = smtp_provider.send_email(
+            config.smtp, recipients, subject, html_body,
+            use_bcc=use_bcc, to_address=to_address,
+        )
 
     if sent:
         logger.info("Notification sent (%s) to %d recipient(s)", label, len(recipients))

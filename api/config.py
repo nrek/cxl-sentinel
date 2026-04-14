@@ -73,6 +73,8 @@ class NotificationsConfig:
     sendgrid: SendGridConfig = field(default_factory=SendGridConfig)
     branding: BrandingConfig = field(default_factory=BrandingConfig)
     rules: list[ServerNotificationRule] = field(default_factory=list)
+    use_bcc: bool = True  # True = recipients in BCC, To: is to_address; False = recipients in To: directly
+    to_address: str = ""  # visible To: header when use_bcc is True; defaults to from_address if blank
 
 
 @dataclass
@@ -179,4 +181,6 @@ def _parse_notifications(raw: dict) -> NotificationsConfig:
 
     return NotificationsConfig(
         smtp=smtp, sendgrid=sendgrid, branding=branding, rules=rules,
+        use_bcc=bool(raw.get("use_bcc", True)),
+        to_address=str(raw.get("to_address", "")),
     )

@@ -17,6 +17,14 @@ from pathlib import Path
 import yaml
 
 
+def _yaml_scalar(value: str) -> str:
+    """Quote a YAML scalar if it contains special characters, otherwise emit bare."""
+    s = str(value)
+    if not s or any(c in s for c in ":#{}[]|>&*!%@`'\"\\,"):
+        return f'"{s}"'
+    return s
+
+
 def migrate(path: str) -> None:
     p = Path(path)
     if not p.exists():
@@ -63,6 +71,8 @@ def migrate(path: str) -> None:
             "smtp": _clean_smtp(smtp),
             "sendgrid": _clean_sendgrid(sendgrid),
             "branding": _clean_branding(branding),
+            "use_bcc": notif.get("use_bcc", True),
+            "to_address": notif.get("to_address", ""),
             "rules": new_rules,
         },
     }
@@ -73,7 +83,23 @@ def migrate(path: str) -> None:
     print(f"Backed up original to {backup}")
 
     with open(p, "w") as f:
+        # Dump everything except rules, which we format manually for readability
+        rules = clean["notifications"].pop("rules")
         yaml.dump(clean, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
+
+        # Write rules with comment separators between each entry
+        f.write("  rules:\n")
+        for i, rule in enumerate(rules):
+            if i > 0:
+                f.write("  # ──────────────────────────────────\n")
+            f.write(f"  - server_id: {_yaml_scalar(rule['server_id'])}\n")
+            f.write(f"    server_alias: {_yaml_scalar(rule.get('server_alias', ''))}\n")
+            envs = rule.get("environments", ["production", "staging"])
+            f.write(f"    environments: [{', '.join(envs)}]\n")
+            f.write(f"    send_schedule: {_yaml_scalar(rule.get('send_schedule', '6h'))}\n")
+            f.write("    recipients:\n")
+            for addr in rule.get("recipients", []):
+                f.write(f"    - {_yaml_scalar(addr)}\n")
 
     print(f"Migrated config written to {p}")
     print(f"  {len(new_rules)} notification rule(s)")

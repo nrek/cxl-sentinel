@@ -2,7 +2,8 @@
 
 Uses the SendGrid v3 Mail Send API directly via requests,
 avoiding the heavy sendgrid-python SDK.
-Recipients are placed in BCC; the TO line is the sender address.
+When use_bcc is True, recipients are placed in BCC and the TO line
+shows to_address (or from_address as fallback).
 """
 
 import logging
@@ -21,20 +22,31 @@ def send_email(
     recipients: list[str],
     subject: str,
     html_body: str,
+    *,
+    use_bcc: bool = True,
+    to_address: str = "",
 ) -> bool:
-    """Send an HTML email via SendGrid. TO is the sender; recipients go in BCC."""
+    """Send an HTML email via SendGrid."""
     if not recipients:
         logger.debug("No recipients, skipping SendGrid send")
         return True
 
+    visible_to = to_address or config.from_address
+
+    if use_bcc:
+        personalization = {
+            "to": [{"email": visible_to}],
+            "bcc": [{"email": addr} for addr in recipients],
+            "subject": subject,
+        }
+    else:
+        personalization = {
+            "to": [{"email": addr} for addr in recipients],
+            "subject": subject,
+        }
+
     payload = {
-        "personalizations": [
-            {
-                "to": [{"email": config.from_address}],
-                "bcc": [{"email": addr} for addr in recipients],
-                "subject": subject,
-            }
-        ],
+        "personalizations": [personalization],
         "from": {
             "email": config.from_address,
             "name": config.from_name,

@@ -1,7 +1,8 @@
 """SMTP email provider for deploy notifications.
 
 Supports standard SMTP (Gmail, Outlook, self-hosted) with TLS.
-Recipients are placed in BCC; the TO line is the sender address.
+When use_bcc is True, recipients are placed in BCC and the TO line
+shows to_address (or from_address as fallback).
 """
 
 import logging
@@ -19,8 +20,11 @@ def send_email(
     recipients: list[str],
     subject: str,
     html_body: str,
+    *,
+    use_bcc: bool = True,
+    to_address: str = "",
 ) -> bool:
-    """Send an HTML email via SMTP. TO is the sender; recipients go in BCC."""
+    """Send an HTML email via SMTP."""
     if not recipients:
         logger.debug("No recipients, skipping SMTP send")
         return True
@@ -28,14 +32,18 @@ def send_email(
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = f"{config.from_name} <{config.from_address}>"
-    msg["To"] = config.from_address
-    msg["Bcc"] = ", ".join(recipients)
+
+    if use_bcc:
+        visible_to = to_address or config.from_address
+        msg["To"] = visible_to
+        envelope_recipients = list({visible_to} | set(recipients))
+    else:
+        msg["To"] = ", ".join(recipients)
+        envelope_recipients = list(recipients)
 
     plain_text = _html_to_plain_fallback(subject)
     msg.attach(MIMEText(plain_text, "plain", "utf-8"))
     msg.attach(MIMEText(html_body, "html", "utf-8"))
-
-    envelope_recipients = list({config.from_address} | set(recipients))
 
     try:
         if config.use_tls:

@@ -185,9 +185,15 @@ def cmd_test_email(args):
 
     recipients = [args.to.strip()]
     if n.sendgrid.enabled:
-        ok = sendgrid_provider.send_email(n.sendgrid, recipients, subject, html_body)
+        ok = sendgrid_provider.send_email(
+            n.sendgrid, recipients, subject, html_body,
+            use_bcc=n.use_bcc, to_address=n.to_address,
+        )
     else:
-        ok = smtp_provider.send_email(n.smtp, recipients, subject, html_body)
+        ok = smtp_provider.send_email(
+            n.smtp, recipients, subject, html_body,
+            use_bcc=n.use_bcc, to_address=n.to_address,
+        )
 
     if ok:
         print(f"Test email sent to {args.to}")
