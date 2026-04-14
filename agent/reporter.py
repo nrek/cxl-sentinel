@@ -34,12 +34,10 @@ class Reporter:
         server_id: str,
         environment: str,
         repo_alias: str,
-        project: str,
         metadata: CommitMetadata,
     ) -> bool:
         """Post a deploy event to the API. Returns True on success."""
         payload = {
-            "project": project,
             "server_id": server_id,
             "environment": environment,
             "repo_alias": repo_alias,
@@ -110,8 +108,8 @@ class Reporter:
         logger.info("Flushing %d queued events", len(events))
         flushed = 0
         for event in events:
-            if "project" not in event:
-                event["project"] = event.get("repo_alias", "")
+            event.pop("project", None)
+            event.pop("client", None)
             if self._post("/events", event):
                 flushed += 1
             else:

@@ -8,12 +8,10 @@ sentinel:
 
 repos:
   - alias: "front-end"
-    project: "my-frontend"         # optional; defaults to alias if omitted
     path: "/var/www/my-frontend"
     branch: "main"             # optional, defaults to current HEAD branch
 
   - alias: "backend"
-    project: "my-backend"
     path: "/var/www/my-backend"
     branch: "main"
 
