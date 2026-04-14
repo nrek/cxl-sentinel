@@ -110,6 +110,8 @@ class Reporter:
         logger.info("Flushing %d queued events", len(events))
         flushed = 0
         for event in events:
+            if "project" not in event:
+                event["project"] = event.get("repo_alias", "")
             if self._post("/events", event):
                 flushed += 1
             else:
