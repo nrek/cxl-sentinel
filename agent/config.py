@@ -24,6 +24,7 @@ def parse_duration(value) -> int:
 class RepoConfig:
     alias: str
     path: str
+    project: str | None = None
     branch: str = "main"
 
     def validate(self) -> list[str]:
@@ -34,6 +35,8 @@ class RepoConfig:
             errors.append(f"Repo '{self.alias}': path is required")
         elif not Path(self.path).is_absolute():
             errors.append(f"Repo '{self.alias}': path must be absolute, got '{self.path}'")
+        if self.project is not None and not str(self.project).strip():
+            errors.append(f"Repo '{self.alias}': project cannot be empty if provided")
         return errors
 
 
@@ -124,6 +127,7 @@ def load_config(path: str) -> AgentConfig:
         repos.append(RepoConfig(
             alias=str(r.get("alias", "")),
             path=str(r.get("path", "")),
+            project=(str(r["project"]) if "project" in r and r["project"] is not None else None),
             branch=str(r.get("branch", "main")),
         ))
 

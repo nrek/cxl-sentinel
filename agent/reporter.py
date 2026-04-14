@@ -34,10 +34,12 @@ class Reporter:
         server_id: str,
         environment: str,
         repo_alias: str,
+        project: str,
         metadata: CommitMetadata,
     ) -> bool:
         """Post a deploy event to the API. Returns True on success."""
         payload = {
+            "project": project,
             "server_id": server_id,
             "environment": environment,
             "repo_alias": repo_alias,

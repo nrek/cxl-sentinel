@@ -127,6 +127,7 @@ def _scan_repo(config, repo, state, reporter) -> None:
         server_id=config.sentinel.server_id,
         environment=config.sentinel.environment,
         repo_alias=repo.alias,
+        project=(repo.project or repo.alias),
         metadata=metadata,
     )
 
